@@ -1,0 +1,66 @@
+[
+  {
+    "id": "jcs-escaping",
+    "kind": "canonical",
+    "input": "{\"x\": \"\\\"\\\\\\b\\t\\n\\f\\r\\u0000<>&  😀\"}",
+    "error": "",
+    "canonical": "{\"x\":\"\\\"\\\\\\b\\t\\n\\f\\r\\u0000<>&  😀\"}",
+    "digest": "afbbfcdb1eb9e1610b63f89e653e2e4d2efedb1a170aa9920ac6b240af8559ff"
+  },
+  {
+    "id": "jcs-utf16-order",
+    "kind": "canonical",
+    "input": "{\"\": 1, \"😀\": 2}",
+    "error": "",
+    "canonical": "{\"😀\":2,\"\":1}",
+    "digest": "28c95d1bbb2209223307e62f489020e8f9e0cfa16adf2daf6d88127a1e8dd22a"
+  },
+  {
+    "id": "jcs-composed",
+    "kind": "canonical",
+    "input": "{\"s\": \"é\"}",
+    "error": "",
+    "canonical": "{\"s\":\"é\"}",
+    "digest": "86028b41ba792eaf82aa26a45b218f6734f7f1096a86f1746c8296e088a0ccb4"
+  },
+  {
+    "id": "jcs-decomposed",
+    "kind": "canonical",
+    "input": "{\"s\": \"é\"}",
+    "error": "",
+    "canonical": "{\"s\":\"é\"}",
+    "digest": "1fc0bd7cc93fca8092a2041d7d01842876422aa7e2838acf42c14578e9f2be05"
+  },
+  {
+    "id": "jcs-safe-integer",
+    "kind": "canonical",
+    "input": "{\"x\":9007199254740991,\"z\":-0}",
+    "error": "",
+    "canonical": "{\"x\":9007199254740991,\"z\":0}",
+    "digest": "9cb1ed5874b788943f910cc6f4ccacd8e99d186a012480d0831f4075e5f9dc20"
+  },
+  {
+    "id": "jcs-unsafe-integer",
+    "kind": "canonical",
+    "input": "{\"x\":9007199254740992}",
+    "error": "unsupported_value"
+  },
+  {
+    "id": "jcs-lone-surrogate",
+    "kind": "canonical",
+    "input": "\"\\ud800\"",
+    "error": "malformed_wire"
+  },
+  {
+    "id": "jcs-duplicate-key",
+    "kind": "canonical",
+    "input": "{\"x\":1,\"x\":2}",
+    "error": "malformed_wire"
+  },
+  {
+    "id": "jcs-trailing",
+    "kind": "canonical",
+    "input": "{} {}",
+    "error": "malformed_wire"
+  }
+]

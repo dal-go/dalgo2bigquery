@@ -1,0 +1,362 @@
+[
+  {
+    "id": "int64-max",
+    "kind": "scalar",
+    "field": {
+      "name": "n",
+      "type": "INT64",
+      "mode": "NULLABLE"
+    },
+    "value": "9223372036854775807",
+    "expected": "9223372036854775807",
+    "error": ""
+  },
+  {
+    "id": "int64-min",
+    "kind": "scalar",
+    "field": {
+      "name": "n",
+      "type": "INT64",
+      "mode": "NULLABLE"
+    },
+    "value": "-9223372036854775808",
+    "expected": "-9223372036854775808",
+    "error": ""
+  },
+  {
+    "id": "int64-overflow",
+    "kind": "scalar",
+    "field": {
+      "name": "n",
+      "type": "INT64",
+      "mode": "NULLABLE"
+    },
+    "value": "9223372036854775808",
+    "expected": null,
+    "error": "unsupported_value"
+  },
+  {
+    "id": "int64-number-input",
+    "kind": "scalar",
+    "field": {
+      "name": "n",
+      "type": "INT64",
+      "mode": "NULLABLE"
+    },
+    "value": 12,
+    "expected": null,
+    "error": "malformed_wire"
+  },
+  {
+    "id": "numeric-normalize",
+    "kind": "scalar",
+    "field": {
+      "name": "n",
+      "type": "NUMERIC",
+      "mode": "NULLABLE"
+    },
+    "value": "-00012.34000",
+    "expected": "-12.34",
+    "error": ""
+  },
+  {
+    "id": "numeric-negative-zero",
+    "kind": "scalar",
+    "field": {
+      "name": "n",
+      "type": "NUMERIC",
+      "mode": "NULLABLE"
+    },
+    "value": "-0.000",
+    "expected": "0",
+    "error": ""
+  },
+  {
+    "id": "numeric-scale-overflow",
+    "kind": "scalar",
+    "field": {
+      "name": "n",
+      "type": "NUMERIC",
+      "mode": "NULLABLE"
+    },
+    "value": "0.0000000001",
+    "expected": null,
+    "error": "unsupported_value"
+  },
+  {
+    "id": "numeric-range-overflow",
+    "kind": "scalar",
+    "field": {
+      "name": "n",
+      "type": "NUMERIC",
+      "mode": "NULLABLE"
+    },
+    "value": "100000000000000000000000000000",
+    "expected": null,
+    "error": "unsupported_value"
+  },
+  {
+    "id": "json-null-text",
+    "kind": "scalar",
+    "field": {
+      "name": "n",
+      "type": "JSON",
+      "mode": "NULLABLE"
+    },
+    "value": "null",
+    "expected": "null",
+    "error": ""
+  },
+  {
+    "id": "sql-null",
+    "kind": "scalar",
+    "field": {
+      "name": "n",
+      "type": "JSON",
+      "mode": "NULLABLE"
+    },
+    "value": null,
+    "expected": null,
+    "error": ""
+  },
+  {
+    "id": "empty-string",
+    "kind": "scalar",
+    "field": {
+      "name": "n",
+      "type": "STRING",
+      "mode": "NULLABLE"
+    },
+    "value": "",
+    "expected": "",
+    "error": ""
+  },
+  {
+    "id": "required-null",
+    "kind": "scalar",
+    "field": {
+      "name": "n",
+      "type": "STRING",
+      "mode": "REQUIRED"
+    },
+    "value": null,
+    "expected": null,
+    "error": "malformed_wire"
+  },
+  {
+    "id": "unknown-null-type",
+    "kind": "scalar",
+    "field": {
+      "name": "n",
+      "type": "STRUCT",
+      "mode": "NULLABLE"
+    },
+    "value": null,
+    "expected": null,
+    "error": "unsupported_type"
+  },
+  {
+    "id": "bool-true",
+    "kind": "scalar",
+    "field": {
+      "name": "n",
+      "type": "BOOL",
+      "mode": "NULLABLE"
+    },
+    "value": "true",
+    "expected": true,
+    "error": ""
+  },
+  {
+    "id": "bool-invalid",
+    "kind": "scalar",
+    "field": {
+      "name": "n",
+      "type": "BOOL",
+      "mode": "NULLABLE"
+    },
+    "value": "1",
+    "expected": null,
+    "error": "unsupported_value"
+  },
+  {
+    "id": "bytes-canonical",
+    "kind": "scalar",
+    "field": {
+      "name": "n",
+      "type": "BYTES",
+      "mode": "NULLABLE"
+    },
+    "value": "YQ==",
+    "expected": "YQ==",
+    "error": ""
+  },
+  {
+    "id": "bytes-bad-pad",
+    "kind": "scalar",
+    "field": {
+      "name": "n",
+      "type": "BYTES",
+      "mode": "NULLABLE"
+    },
+    "value": "YR==",
+    "expected": null,
+    "error": "unsupported_value"
+  },
+  {
+    "id": "date-leap",
+    "kind": "scalar",
+    "field": {
+      "name": "n",
+      "type": "DATE",
+      "mode": "NULLABLE"
+    },
+    "value": "2024-02-29",
+    "expected": "2024-02-29",
+    "error": ""
+  },
+  {
+    "id": "date-invalid",
+    "kind": "scalar",
+    "field": {
+      "name": "n",
+      "type": "DATE",
+      "mode": "NULLABLE"
+    },
+    "value": "2025-02-29",
+    "expected": null,
+    "error": "unsupported_value"
+  },
+  {
+    "id": "time-micros",
+    "kind": "scalar",
+    "field": {
+      "name": "n",
+      "type": "TIME",
+      "mode": "NULLABLE"
+    },
+    "value": "12:34:56.123456",
+    "expected": "12:34:56.123456",
+    "error": ""
+  },
+  {
+    "id": "time-too-precise",
+    "kind": "scalar",
+    "field": {
+      "name": "n",
+      "type": "TIME",
+      "mode": "NULLABLE"
+    },
+    "value": "12:34:56.1234567",
+    "expected": null,
+    "error": "unsupported_value"
+  },
+  {
+    "id": "timestamp-micros",
+    "kind": "scalar",
+    "field": {
+      "name": "n",
+      "type": "TIMESTAMP",
+      "mode": "NULLABLE"
+    },
+    "value": "-1",
+    "expected": "-1",
+    "error": ""
+  },
+  {
+    "id": "timestamp-out-of-calendar",
+    "kind": "scalar",
+    "field": {
+      "name": "n",
+      "type": "TIMESTAMP",
+      "mode": "NULLABLE"
+    },
+    "value": "253402300800000000",
+    "expected": null,
+    "error": "unsupported_value"
+  },
+  {
+    "id": "float--0",
+    "kind": "scalar",
+    "field": {
+      "name": "n",
+      "type": "FLOAT64",
+      "mode": "NULLABLE"
+    },
+    "value": "-0",
+    "expected": "0",
+    "error": ""
+  },
+  {
+    "id": "float-1e-7",
+    "kind": "scalar",
+    "field": {
+      "name": "n",
+      "type": "FLOAT64",
+      "mode": "NULLABLE"
+    },
+    "value": "1e-7",
+    "expected": "1e-7",
+    "error": ""
+  },
+  {
+    "id": "float-1e-6",
+    "kind": "scalar",
+    "field": {
+      "name": "n",
+      "type": "FLOAT64",
+      "mode": "NULLABLE"
+    },
+    "value": "1e-6",
+    "expected": "0.000001",
+    "error": ""
+  },
+  {
+    "id": "float-1e20",
+    "kind": "scalar",
+    "field": {
+      "name": "n",
+      "type": "FLOAT64",
+      "mode": "NULLABLE"
+    },
+    "value": "1e20",
+    "expected": "100000000000000000000",
+    "error": ""
+  },
+  {
+    "id": "float-1e21",
+    "kind": "scalar",
+    "field": {
+      "name": "n",
+      "type": "FLOAT64",
+      "mode": "NULLABLE"
+    },
+    "value": "1e21",
+    "expected": "1e+21",
+    "error": ""
+  },
+  {
+    "id": "float-nonfinite",
+    "kind": "scalar",
+    "field": {
+      "name": "n",
+      "type": "FLOAT64",
+      "mode": "NULLABLE"
+    },
+    "value": "NaN",
+    "expected": null,
+    "error": "unsupported_value"
+  },
+  {
+    "id": "float-inf",
+    "kind": "scalar",
+    "field": {
+      "name": "n",
+      "type": "FLOAT64",
+      "mode": "NULLABLE"
+    },
+    "value": "Infinity",
+    "expected": null,
+    "error": "unsupported_value"
+  }
+]

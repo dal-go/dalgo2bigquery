@@ -1,0 +1,58 @@
+{
+  "format": "bigquery-contract-corpus/1",
+  "revision": 1,
+  "scope": "initial canonical, scalar, raw rows and named hash subset; full request/job corpus remains required",
+  "scenario_count": 50,
+  "files": {
+    "canonical.json": "7adcd926726043b4073d1dd13d5e07a8f1580e8a23fb6a600b615131dda7b5b2",
+    "values.json": "265aeb24c32351b2100b726d1c4d26a71e370be51d957fdd75a7688af3af4a22",
+    "rows.json": "1701f691575d2e2842c9d04d80c3cb23dd3c17764a7e766e7113e9d5f0525e5e",
+    "hash-payloads.json": "08ac3cf4a45b942fdc930b8f1931f990ea6acc9ae477659a4f4950a6a2815fbd"
+  },
+  "reference_encoder": "ECMAScript JSON.stringify and UTF-16 Array.sort; raw strings preserved",
+  "named_payloads": {
+    "ReadPlan": [
+      "version",
+      "sourceDigest",
+      "projection",
+      "where",
+      "order",
+      "limit",
+      "parameters",
+      "sql"
+    ],
+    "SourceProfile": [
+      "version",
+      "sourceId",
+      "descriptorDigest",
+      "logicalCollection",
+      "sourceProject",
+      "datasetId",
+      "tableId",
+      "location",
+      "schema",
+      "publisherReviewRef",
+      "rightsReviewRef",
+      "use"
+    ],
+    "Observation": [
+      "table",
+      "location",
+      "type",
+      "config",
+      "schema"
+    ],
+    "Approval": [
+      "effectivePlanDigest",
+      "observationDigest",
+      "policyDigest",
+      "principal",
+      "jobProject",
+      "location",
+      "maximumBytesBilled",
+      "sessionBudgetBytes",
+      "bounds",
+      "estimatedBytes"
+    ]
+  }
+}
