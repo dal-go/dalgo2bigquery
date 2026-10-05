@@ -37,6 +37,7 @@ func errorCode(err error) string {
 	return err.Error()
 }
 func TestSharedCorpus(t *testing.T) {
+	defer writeHTTPReport(t)
 	raw, e := os.ReadFile("testdata/contract/manifest.json")
 	if e != nil {
 		t.Fatal(e)
@@ -49,7 +50,7 @@ func TestSharedCorpus(t *testing.T) {
 	if e = json.Unmarshal(raw, &manifest); e != nil {
 		t.Fatal(e)
 	}
-	if manifest.Revision != 2 {
+	if manifest.Revision != 3 {
 		t.Fatal("corpus revision")
 	}
 	seen := map[string]bool{}
@@ -73,6 +74,8 @@ func TestSharedCorpus(t *testing.T) {
 			seen[c.ID] = true
 			t.Run(c.ID, func(t *testing.T) {
 				switch c.Kind {
+				case "http-state":
+					runHTTPScenario(t, c.ID)
 				case "canonical":
 					got, e := CanonicalJSON([]byte(c.Input))
 					if errorCode(e) != c.Error {

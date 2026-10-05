@@ -1,5 +1,5 @@
-// Package bigquery contains the bounded analytical protocol building blocks.
-// Transport and execution integration are developed in subsequent tranches.
+// Package bigquery implements bounded, lossless and explicitly approved
+// analytical BigQuery reads through DALgo recordsets.
 package bigquery
 
 import (
@@ -17,7 +17,10 @@ import (
 )
 
 // Error contains a stable, sanitized code, never query values or provider bodies.
-type Error struct{ Code string }
+type Error struct {
+	Code   string
+	Reason string
+}
 
 func (e *Error) Error() string { return e.Code }
 func fail(code string) error   { return &Error{Code: code} }

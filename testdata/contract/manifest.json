@@ -1,14 +1,16 @@
 {
   "format": "bigquery-contract-corpus/1",
-  "revision": 2,
-  "scope": "initial canonical, scalar, raw rows and named hash subset; full request/job corpus remains required",
-  "scenario_count": 70,
+  "revision": 3,
+  "scope": "Canonical/scalar/raw-row, named binding mutations and production HTTP/job state scenarios; live and cross-runtime acceptance remain separately required",
+  "scenario_count": 168,
   "files": {
     "canonical.json": "7adcd926726043b4073d1dd13d5e07a8f1580e8a23fb6a600b615131dda7b5b2",
     "values.json": "265aeb24c32351b2100b726d1c4d26a71e370be51d957fdd75a7688af3af4a22",
     "rows.json": "1701f691575d2e2842c9d04d80c3cb23dd3c17764a7e766e7113e9d5f0525e5e",
     "hash-payloads.json": "08ac3cf4a45b942fdc930b8f1931f990ea6acc9ae477659a4f4950a6a2815fbd",
-    "scalar-boundary-r2.json": "aea453e16aba07c8124cfef389b7101eabab79893fbf3302bcf33c74e9cbe6c7"
+    "scalar-boundary-r2.json": "aea453e16aba07c8124cfef389b7101eabab79893fbf3302bcf33c74e9cbe6c7",
+    "http-state-r3.json": "409262434659d09c7eefed94bfd11deec8552a3cc878c723cb4be6568568a3cb",
+    "hash-mutations-r3.json": "754ebdef8bb2eddf9cc0995fba71d68707fa21afa884883a572edfab6dfc11a4"
   },
   "reference_encoder": "ECMAScript JSON.stringify and UTF-16 Array.sort; raw strings preserved",
   "named_payloads": {
@@ -57,11 +59,17 @@
     ]
   },
   "previous_revision": {
-    "revision": 1,
-    "manifest_sha256": "cba39b400bff70a2e2dbc755437e7e895293df24fc92076f1a58480f6aa7b7c5",
-    "immutable_commit": "0bc080b0818da18d6597fe09de71e47659c4d2fd"
+    "revision": 2,
+    "manifest_sha256": "90c6ee03076ccf2d90148def6cafea5488046fff7f55e49880f67070cf4f7ffe",
+    "immutable_commit": "d0784c45e698069a3b69198b172d91b754cf7671"
   },
   "float64_input_grammar": "^[+-]?([0-9]+(\\.[0-9]*)?|\\.[0-9]+)([eE][+-]?[0-9]+)?$",
   "unicode_scalar_boundary": "Reject malformed UTF-8 direct Go strings; JS direct strings reject unpaired UTF-16 surrogates. scalar-bytes vectors contain invalid UTF-8 hex and must be rejected before scalar success, never decoded with replacement.",
-  "float64_input_match": "Entire input must match, including its final code unit. JavaScript implementations must verify match length, because $ can match before a final newline."
+  "float64_input_match": "Entire input must match, including its final code unit. JavaScript implementations must verify match length, because $ can match before a final newline.",
+  "http_scenario_protocol": {
+    "request": "fixed origin + exact method/path/query; full JSON request body compared canonically",
+    "response": "literal body or body_hex preserved before parsing; gzip means harness-compressed UTF-8 body; advance_ms advances injected clock before response",
+    "actions": "Trusted test controls change grant/principal/policy/clock or persisted bounds. Rebind preserves original principal/counters/deadline and rotates active cursor. No production request may carry these controls.",
+    "overflow_observations": "Only explicit expected_runtime_observations.go/js.bytes on rejected overflow scenarios may differ according to actual exposed decompressed chunks; all other report fields/counters remain equal. response_chunk_bytes controls identical read schedules in the harness."
+  }
 }
