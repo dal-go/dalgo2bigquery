@@ -19,20 +19,30 @@ type dependencyResult[T any] struct {
 }
 
 func awaitDependency[T any](ctx context.Context, fn func() (T, error), discard func(T)) (T, error) {
+	value, err, _ := awaitOwnedDependency(ctx, fn, discard, nil)
+	return value, err
+}
+
+// admitted transfers lifecycle ownership even if the caller times out before the
+// worker runs. finish remains inside that worker's bounded admission slot.
+func awaitOwnedDependency[T any](ctx context.Context, fn func() (T, error), discard func(T), finish func(T)) (value T, err error, admitted bool) {
 	var zero T
 	if ctx.Err() != nil {
-		return zero, deadlineError()
+		return zero, deadlineError(), false
 	}
 	select {
 	case dependencySlots <- struct{}{}:
 	default:
-		return zero, fail("local_stopped")
+		return zero, fail("local_stopped"), false
 	}
 	done := make(chan dependencyResult[T])
 	accepted := make(chan bool, 1)
 	go func() {
 		defer func() { <-dependencySlots }()
 		v, e := fn()
+		if finish != nil {
+			defer finish(v)
+		}
 		select {
 		case done <- dependencyResult[T]{v, e}:
 			if !<-accepted && discard != nil {
@@ -48,12 +58,12 @@ func awaitDependency[T any](ctx context.Context, fn func() (T, error), discard f
 	case result := <-done:
 		if ctx.Err() != nil {
 			accepted <- false
-			return zero, deadlineError()
+			return zero, deadlineError(), true
 		}
 		accepted <- true
-		return result.value, result.err
+		return result.value, result.err, true
 	case <-ctx.Done():
-		return zero, deadlineError()
+		return zero, deadlineError(), true
 	}
 }
 func discardAsync[T any](v T, fn func(T)) {
@@ -64,6 +74,10 @@ func discardAsync[T any](v T, fn func(T)) {
 	}
 }
 func closeBody(body io.Closer) {
+	if tracked, ok := body.(*trackedBody); ok && tracked.closeRequested != nil {
+		tracked.requestClose()
+		return
+	}
 	if body != nil {
 		discardAsync(body, func(b io.Closer) { _ = b.Close() })
 	}
@@ -99,7 +113,8 @@ func enterActualRequest(id string) (func(), error) {
 	if busy {
 		return nil, fail("local_stopped")
 	}
-	return func() { actualRequests.Delete(id) }, nil
+	var once sync.Once
+	return func() { once.Do(func() { actualRequests.Delete(id) }) }, nil
 }
 func boundedContext(ctx context.Context, d time.Duration) (context.Context, context.CancelFunc) {
 	if d <= 0 {
@@ -108,25 +123,34 @@ func boundedContext(ctx context.Context, d time.Duration) (context.Context, cont
 	return context.WithTimeout(ctx, d)
 }
 
-// Keep actual in-flight authority until both a read and close have physically
-// finished. A malicious Close returning early cannot free a still-running Read.
+// EOF stops further reads but never ends close ownership. An admitted transport
+// worker retains its slot until physical Close completes. Concurrent active Read
+// also keeps the run marker held, even if the injected Close returns early.
 type trackedBody struct {
-	body     io.ReadCloser
-	leave    func()
-	mu       sync.Mutex
-	reads    int
-	finished bool
-	once     sync.Once
+	body           io.ReadCloser
+	leave          func()
+	mu             sync.Mutex
+	reads          int
+	eof, closed    bool
+	once           sync.Once
+	closeOnce      sync.Once
+	requestOnce    sync.Once
+	closeRequested chan struct{}
+	closeDone      chan struct{}
+	closeErr       error
 }
 
+func newTrackedBody(body io.ReadCloser, leave func()) *trackedBody {
+	return &trackedBody{body: body, leave: leave, closeRequested: make(chan struct{}), closeDone: make(chan struct{})}
+}
 func (t *trackedBody) releaseLocked() {
-	if t.finished && t.reads == 0 {
+	if t.closed && t.reads == 0 {
 		t.once.Do(t.leave)
 	}
 }
 func (t *trackedBody) Read(p []byte) (int, error) {
 	t.mu.Lock()
-	if t.finished {
+	if t.eof || t.closed {
 		t.mu.Unlock()
 		return 0, io.EOF
 	}
@@ -136,19 +160,51 @@ func (t *trackedBody) Read(p []byte) (int, error) {
 	t.mu.Lock()
 	t.reads--
 	if e == io.EOF {
-		t.finished = true
+		t.eof = true
 	}
 	t.releaseLocked()
 	t.mu.Unlock()
 	return n, e
 }
+func (t *trackedBody) requestClose() { t.requestOnce.Do(func() { close(t.closeRequested) }) }
+func (t *trackedBody) physicalClose() {
+	t.closeOnce.Do(func() {
+		e := t.body.Close()
+		t.mu.Lock()
+		t.closeErr = e
+		t.closed = true
+		t.releaseLocked()
+		t.mu.Unlock()
+		if t.closeDone != nil {
+			close(t.closeDone)
+		}
+	})
+}
+
+// Called only by the already-admitted actual transport worker: cleanup cannot
+// lose admission at a full pool or spawn another unbounded worker.
+func (t *trackedBody) ownClose() { <-t.closeRequested; t.physicalClose() }
 func (t *trackedBody) Close() error {
-	e := t.body.Close()
+	if t.closeRequested != nil {
+		t.requestClose()
+		<-t.closeDone
+	} else {
+		t.physicalClose()
+	}
 	t.mu.Lock()
-	t.finished = true
-	t.releaseLocked()
-	t.mu.Unlock()
-	return e
+	defer t.mu.Unlock()
+	return t.closeErr
+}
+func (t *trackedBody) closeWithin(ctx context.Context) error {
+	t.requestClose()
+	select {
+	case <-t.closeDone:
+		t.mu.Lock()
+		defer t.mu.Unlock()
+		return t.closeErr
+	case <-ctx.Done():
+		return deadlineError()
+	}
 }
 
 // Recovery never waits indefinitely for a contended ledger. If it cannot commit,

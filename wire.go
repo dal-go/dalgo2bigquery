@@ -94,37 +94,66 @@ func (g *dispatchGate) RoundTrip(req *http.Request) (*http.Response, error) {
 	if e != nil {
 		return nil, e
 	}
-	if g.beforeDispatch != nil {
-		if e = g.beforeDispatch(); e != nil {
-			leave()
-			return nil, e
-		}
-	}
-	g.dispatched.Store(true)
-	resp, e := awaitDependency(req.Context(), func() (*http.Response, error) {
+	// No actual transport authority exists until worker admission succeeds.
+	// A refused slot leaves counters/dispatched untouched and releases the marker.
+	physical, e, admitted := awaitOwnedDependency(req.Context(), func() (physicalResponse, error) {
 		if req.Context().Err() != nil {
 			leave()
-			return nil, deadlineError()
+			return physicalResponse{}, deadlineError()
 		}
+		if g.beforeDispatch != nil {
+			if err := g.beforeDispatch(); err != nil {
+				leave()
+				return physicalResponse{}, err
+			}
+		}
+		if req.Context().Err() != nil {
+			leave()
+			return physicalResponse{}, deadlineError()
+		}
+		g.dispatched.Store(true)
 		resp, err := g.base.RoundTrip(req)
+		value := physicalResponse{response: resp}
 		if resp == nil || resp.Body == nil {
 			leave()
 		} else {
-			resp.Body = &trackedBody{body: resp.Body, leave: leave}
+			value.body = newTrackedBody(resp.Body, leave)
+			resp.Body = value.body
+			if err != nil {
+				value.body.requestClose()
+			}
 		}
-		return resp, err
-	}, func(resp *http.Response) {
-		if resp != nil && resp.Body != nil {
-			_ = resp.Body.Close()
+		return value, err
+	}, func(value physicalResponse) {
+		if value.body != nil {
+			value.body.requestClose()
 		}
-	})
+	},
+		func(value physicalResponse) {
+			if value.body != nil {
+				value.body.ownClose()
+			}
+		})
+	if !admitted {
+		leave()
+	}
+	resp := physical.response
+
 	if req.Context().Err() != nil {
+		if resp != nil {
+			closeBody(resp.Body)
+		}
 		return nil, deadlineError()
 	}
 	if g.boundedResponse != nil {
 		return g.boundedResponse(resp, e)
 	}
 	return resp, e
+}
+
+type physicalResponse struct {
+	response *http.Response
+	body     *trackedBody
 }
 
 type boundedTransport struct {
@@ -189,7 +218,8 @@ func (t *boundedTransport) validateResponse(resp *http.Response, e error) (*http
 	t.status = resp.StatusCode
 	t.retryAfter = resp.Header.Get("Retry-After")
 	t.mu.Unlock()
-	defer closeBody(resp.Body)
+	originalBody := resp.Body
+	defer closeBody(originalBody)
 	if e := t.bound(); e != nil {
 		t.setError(e)
 		return nil, e
@@ -254,6 +284,12 @@ func (t *boundedTransport) validateResponse(resp *http.Response, e error) (*http
 	if t.ctx != nil && (t.ctx.Err() != nil || !t.c.clock.Now().Before(t.deadline)) {
 		t.setError(deadlineError())
 		return nil, deadlineError()
+	}
+	if body, ok := originalBody.(*trackedBody); ok {
+		if e := body.closeWithin(t.ctx); e != nil {
+			t.setError(e)
+			return nil, e
+		}
 	}
 	resp.Body = io.NopCloser(bytes.NewReader(raw))
 	resp.ContentLength = int64(len(raw))
