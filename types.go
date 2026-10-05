@@ -116,6 +116,7 @@ type Preview struct {
 type Approval struct {
 	nonce, digest string
 	client        *Client
+	bounds        Bounds
 }
 type Counters struct {
 	Rows  int   `json:"rows"`

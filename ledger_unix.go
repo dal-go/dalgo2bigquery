@@ -52,3 +52,5 @@ func ledgerSyncDir(dir string) error {
 	}
 	return nil
 }
+
+func ledgerTemp(dir string) (*os.File, error) { return os.CreateTemp(dir, ".ledger-") }

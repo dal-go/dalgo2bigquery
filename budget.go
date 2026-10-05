@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"strconv"
 	"sync"
+	"time"
 )
 
 var regexpUnsigned = regexp.MustCompile(`^(0|[1-9][0-9]*)$`)
@@ -67,6 +68,8 @@ func emptyLedger() ledgerState {
 // Applications should reuse one private FileLedger path for the budget session.
 type Ledger interface {
 	update(func(*ledgerState) error) error
+	updateContext(context.Context, func(*ledgerState) error) error
+	readContext(context.Context, func(*ledgerState) error) error
 	lease(context.Context, string) (func(), error)
 }
 type MemoryLedger struct {
@@ -77,7 +80,22 @@ type MemoryLedger struct {
 
 func NewMemoryLedger() *MemoryLedger { return &MemoryLedger{state: emptyLedger()} }
 func (m *MemoryLedger) update(fn func(*ledgerState) error) error {
-	m.mu.Lock()
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	return m.updateContext(ctx, fn)
+}
+func (m *MemoryLedger) updateContext(ctx context.Context, fn func(*ledgerState) error) error {
+	for !m.mu.TryLock() {
+		select {
+		case <-ctx.Done():
+			return deadlineError()
+		case <-time.After(time.Millisecond):
+		}
+	}
+	if ctx.Err() != nil {
+		m.mu.Unlock()
+		return deadlineError()
+	}
 	defer m.mu.Unlock()
 	next, e := jsonCopy(m.state)
 	if e != nil {
@@ -89,6 +107,9 @@ func (m *MemoryLedger) update(fn func(*ledgerState) error) error {
 	stored, e := jsonCopy(next)
 	if e != nil {
 		return e
+	}
+	if ctx.Err() != nil {
+		return deadlineError()
 	}
 	m.state = stored
 	return nil
@@ -149,33 +170,26 @@ func (l *FileLedger) lease(ctx context.Context, id string) (func(), error) {
 	return func() { _ = ledgerUnlock(f); _ = f.Close() }, nil
 }
 func (l *FileLedger) update(fn func(*ledgerState) error) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	return l.updateContext(ctx, fn)
+}
+func (l *FileLedger) updateContext(ctx context.Context, fn func(*ledgerState) error) error {
 	lock, e := l.lock("session.lock")
 	if e != nil {
 		return e
 	}
 	defer lock.Close()
-	if e = ledgerLock(lock, false); e != nil {
-		return fail("invalid_input")
+	if e = ledgerLockContext(ctx, lock); e != nil {
+		return e
 	}
 	defer ledgerUnlock(lock)
-	state := emptyLedger()
-	path := filepath.Join(l.dir, "session.json")
-	f, e := ledgerOpen(path, false)
-	if e == nil {
-		s, se := f.Stat()
-		if se != nil || !s.Mode().IsRegular() || !ledgerPrivateFile(f) || s.Size() > 64<<20 {
-			f.Close()
-			return fail("invalid_input")
-		}
-		dec := json.NewDecoder(f)
-		dec.DisallowUnknownFields()
-		e = dec.Decode(&state)
-		f.Close()
-		if e != nil || state.Version != 1 || state.Runs == nil || state.Previews == nil {
-			return fail("invalid_input")
-		}
-	} else if !os.IsNotExist(e) {
-		return fail("invalid_input")
+	state, e := l.readState(ctx)
+	if e != nil {
+		return e
+	}
+	if ctx.Err() != nil {
+		return deadlineError()
 	}
 	if e = fn(&state); e != nil {
 		return e
@@ -184,7 +198,7 @@ func (l *FileLedger) update(fn func(*ledgerState) error) error {
 	if e != nil || len(data) > 64<<20 {
 		return fail("response_limit")
 	}
-	temp, e := os.CreateTemp(l.dir, ".ledger-")
+	temp, e := ledgerTemp(l.dir)
 	if e != nil {
 		return fail("invalid_input")
 	}
@@ -200,14 +214,17 @@ func (l *FileLedger) update(fn func(*ledgerState) error) error {
 	if e != nil || ce != nil {
 		return fail("invalid_input")
 	}
-	if e = ledgerReplace(name, path); e != nil {
+	if ctx.Err() != nil {
+		return deadlineError()
+	}
+	if e = ledgerReplace(name, filepath.Join(l.dir, "session.json")); e != nil {
 		return fail("invalid_input")
 	}
 	return ledgerSyncDir(l.dir)
 }
 func (c *Client) loadRun(id string) (runRecord, error) {
 	var run runRecord
-	e := c.ledger.update(func(s *ledgerState) error {
+	e := c.ledger.readContext(context.Background(), func(s *ledgerState) error {
 		r, ok := s.Runs[id]
 		if !ok {
 			return fail("cursor_invalid")
@@ -232,4 +249,80 @@ func (c *Client) mutateRun(id string, fn func(*runRecord) error) error {
 }
 func budgetKey(p Preview) string {
 	return p.Execution.Principal.Kind + "\x00" + p.Execution.Principal.Subject + "\x00" + p.Execution.JobProject
+}
+
+func (l *FileLedger) readState(ctx context.Context) (ledgerState, error) {
+	state := emptyLedger()
+	path := filepath.Join(l.dir, "session.json")
+	f, e := ledgerOpen(path, false)
+	if e == nil {
+		s, se := f.Stat()
+		if se != nil || !s.Mode().IsRegular() || !ledgerPrivateFile(f) || s.Size() > 64<<20 {
+			f.Close()
+			return state, fail("invalid_input")
+		}
+		dec := json.NewDecoder(f)
+		dec.DisallowUnknownFields()
+		e = dec.Decode(&state)
+		f.Close()
+		if e != nil || state.Version != 1 || state.Runs == nil || state.Previews == nil {
+			return state, fail("invalid_input")
+		}
+	} else if !os.IsNotExist(e) {
+		return state, fail("invalid_input")
+	}
+	if ctx.Err() != nil {
+		return state, deadlineError()
+	}
+	return state, nil
+}
+
+func (m *MemoryLedger) readContext(ctx context.Context, fn func(*ledgerState) error) error {
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	return m.updateContext(ctx, func(s *ledgerState) error {
+		copy, e := jsonCopy(*s)
+		if e != nil {
+			return e
+		}
+		return fn(&copy)
+	})
+}
+func (l *FileLedger) readContext(ctx context.Context, fn func(*ledgerState) error) error {
+	s, e := l.readState(ctx)
+	if e != nil {
+		return e
+	}
+	return fn(&s)
+}
+func ledgerLockContext(ctx context.Context, f *os.File) error {
+	for {
+		if ctx.Err() != nil {
+			return deadlineError()
+		}
+		if e := ledgerLock(f, true); e == nil {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return deadlineError()
+		case <-time.After(time.Millisecond):
+		}
+	}
+}
+func (c *Client) mutateRunContext(ctx context.Context, id string, fn func(*runRecord) error) error {
+	return c.ledger.updateContext(ctx, func(s *ledgerState) error {
+		r, ok := s.Runs[id]
+		if !ok {
+			return fail("cursor_invalid")
+		}
+		if ctx.Err() != nil {
+			return deadlineError()
+		}
+		if e := fn(&r); e != nil {
+			return e
+		}
+		s.Runs[id] = r
+		return nil
+	})
 }

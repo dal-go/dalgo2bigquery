@@ -32,7 +32,8 @@ type Run struct {
 	id             string
 	mu             sync.Mutex
 	rows           [][]Cell
-	rs             recordset.Recordset
+	delivered      [][]Cell
+	fields         []Field
 	index          int
 	loaded, done   bool
 	mode           string
@@ -60,23 +61,44 @@ func (r *Run) Schema() []Field {
 	fs, _ := jsonCopy(record.Schema)
 	return fs
 }
-func (r *Run) Recordset() recordset.Recordset { r.mu.Lock(); defer r.mu.Unlock(); return r.rs }
+
+// Recordset exposes only previously authorized delivery, detached from private cells.
+func (r *Run) Recordset() recordset.Recordset {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return makeRecordset(r.fields, r.delivered)
+}
+func makeRecordset(fs []Field, cells [][]Cell) recordset.Recordset {
+	cols := []recordset.Column[any]{}
+	for _, f := range fs {
+		cols = append(cols, recordset.NewTypedColumn[any](f.Name, nil, recordset.ColDbType(f.Type)))
+	}
+	rs := recordset.NewColumnarRecordset("bigquery", cols...)
+	for _, values := range cells {
+		row := rs.NewRow()
+		for i, cell := range values {
+			_ = row.SetValueByIndex(i, cell.Value, rs)
+		}
+	}
+	return rs
+}
+
 func (r *Run) Close() error {
 	r.cancel()
-	return r.c.mutateRun(r.id, func(rr *runRecord) error {
+	return r.c.settleRun(r.id, func(rr *runRecord) error {
 		rr.Receipt.LocalStopped = true
 		rr.Receipt.Reason = "local_stopped"
 		return nil
 	})
 }
 func (r *Run) stopped(e error) {
-	_ = r.c.mutateRun(r.id, func(rr *runRecord) error {
+	_ = r.c.settleRun(r.id, func(rr *runRecord) error {
 		rr.Receipt.LocalStopped = true
 		rr.Receipt.Reason = reasonOf(e)
 		return nil
 	})
 }
-func (r *Run) loadPage(m map[string]any, token *string, refetch bool) error {
+func (r *Run) loadPage(ctx context.Context, m map[string]any, token *string, refetch bool) error {
 	record, e := r.c.loadRun(r.id)
 	if e != nil {
 		return e
@@ -180,7 +202,7 @@ func (r *Run) loadPage(m map[string]any, token *string, refetch bool) error {
 		}
 		cache = &b
 	}
-	e = r.c.mutateRun(r.id, func(rr *runRecord) error {
+	e = r.c.mutateRunContext(ctx, r.id, func(rr *runRecord) error {
 
 		if !refetch {
 			if next != nil && (rr.SeenTokens[*next] || token != nil && *next == *token) {
@@ -221,20 +243,8 @@ func (r *Run) loadPage(m map[string]any, token *string, refetch bool) error {
 	}
 	r.loaded = true
 	r.done = complete && next == nil
-	cols := []recordset.Column[any]{}
-	for _, f := range fs {
-		cols = append(cols, recordset.NewTypedColumn[any](f.Name, nil, recordset.ColDbType(f.Type)))
-	}
-	rs := recordset.NewColumnarRecordset("bigquery", cols...)
-	for _, cells := range rows {
-		row := rs.NewRow()
-		for i, cell := range cells {
-			if e := row.SetValueByIndex(i, cell.Value, rs); e != nil {
-				return fail("malformed_wire")
-			}
-		}
-	}
-	r.rs = rs
+	r.fields = fs
+	r.delivered = nil
 	return nil
 }
 func (r *Run) fetch(token *string, refetch bool) error {
@@ -273,7 +283,7 @@ func (r *Run) fetch(token *string, refetch bool) error {
 	if e != nil {
 		return e
 	}
-	return r.loadPage(m, token, refetch)
+	return r.loadPage(bounded, m, token, refetch)
 }
 func (r *Run) ensure() error {
 	for {
@@ -336,7 +346,13 @@ func (r *Run) ensure() error {
 }
 func (r *Run) commitDelivery(n int) (string, error) {
 	var cursor cursorState
-	e := r.c.mutateRun(r.id, func(rr *runRecord) error {
+	e := r.c.mutateRunContext(r.ctx, r.id, func(rr *runRecord) error {
+		if !r.c.clock.Now().Before(rr.Receipt.ExecutionDeadline) {
+			return deadlineError()
+		}
+		if r.access != rr.ActivePrincipal {
+			return fail("approval_changed")
+		}
 		if n < 0 || n > rr.Receipt.Bounds.MaxRows-rr.Receipt.Counters.Rows {
 			return fail("response_limit")
 		}
@@ -377,6 +393,17 @@ func (r *Run) Cursor() (string, error) {
 func (r *Run) Next() (recordset.Row, recordset.Recordset, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	originalContext := r.ctx
+	rr, boundError := r.c.loadRun(r.id)
+	if boundError != nil {
+		return nil, nil, boundError
+	}
+	boundedContext, finish, boundError := r.c.preparation(originalContext, runScope(rr), false)
+	if boundError != nil {
+		return nil, nil, boundError
+	}
+	r.ctx = boundedContext
+	defer func() { r.ctx = originalContext; finish() }()
 	if r.mode == "page" {
 		return nil, nil, fail("invalid_input")
 	}
@@ -392,15 +419,29 @@ func (r *Run) Next() (recordset.Row, recordset.Recordset, error) {
 		}
 		return nil, nil, e
 	}
-	row := r.rs.GetRow(r.index)
+	index := r.index
 	if _, e = r.commitDelivery(1); e != nil {
 		return nil, nil, e
 	}
-	return row, r.rs, nil
+	cells, _ := jsonCopy(r.rows[index])
+	r.delivered = append(r.delivered, cells)
+	rs := makeRecordset(r.fields, r.delivered)
+	return rs.GetRow(len(r.delivered) - 1), rs, nil
 }
 func (r *Run) NextPage() (Page, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	originalContext := r.ctx
+	rr, boundError := r.c.loadRun(r.id)
+	if boundError != nil {
+		return Page{}, boundError
+	}
+	boundedContext, finish, boundError := r.c.preparation(originalContext, runScope(rr), false)
+	if boundError != nil {
+		return Page{}, boundError
+	}
+	r.ctx = boundedContext
+	defer func() { r.ctx = originalContext; finish() }()
 	if r.mode == "row" {
 		return Page{}, fail("invalid_input")
 	}
@@ -421,7 +462,7 @@ func (r *Run) NextPage() (Page, error) {
 		}
 		return Page{}, e
 	}
-	rr, e := r.c.loadRun(r.id)
+	rr, e = r.c.loadRun(r.id)
 	if e != nil {
 		return Page{}, e
 	}
@@ -434,6 +475,7 @@ func (r *Run) NextPage() (Page, error) {
 	if e != nil {
 		return Page{}, e
 	}
+	r.delivered = append(r.delivered, rows...)
 	return Page{r.Schema(), rows, r.Receipt(), cursor}, nil
 }
 func (c *Client) Resume(ctx context.Context, receipt Receipt, encoded string) (*Run, error) {
@@ -474,15 +516,20 @@ func (c *Client) Resume(ctx context.Context, receipt Receipt, encoded string) (*
 	if rr.Cursor == nil || !equalJSON(*rr.Cursor, cursor) {
 		return run, fail("cursor_invalid")
 	}
-	if e = c.reauthorize(ctx, rr.Preview.Plan, rr.Preview.PolicyDigest); e != nil {
+	bounded, finish, e := c.preparation(ctx, runScope(rr), false)
+	if e != nil {
+		return run, e
+	}
+	defer finish()
+	if e = c.reauthorize(bounded, rr.Preview.Plan, rr.Preview.PolicyDigest); e != nil {
 		return run, e
 	}
 	// Only the trusted cursor advances the page boundary. A partial cursor must
 	// refetch the same page and validate its content before skipping its offset.
-	_ = c.mutateRun(run.id, func(r *runRecord) error { r.Receipt.LocalStopped = false; r.Receipt.Reason = ""; return nil })
+	_ = c.mutateRunContext(bounded, run.id, func(r *runRecord) error { r.Receipt.LocalStopped = false; r.Receipt.Reason = ""; return nil })
 	refetch := cursor.PageDigest != ""
 	if !refetch {
-		e = c.mutateRun(run.id, func(r *runRecord) error { r.PageToken = cursor.PageToken; r.Offset = 0; return nil })
+		e = c.mutateRunContext(bounded, run.id, func(r *runRecord) error { r.PageToken = cursor.PageToken; r.Offset = 0; return nil })
 		if e != nil {
 			return run, e
 		}

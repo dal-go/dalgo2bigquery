@@ -75,7 +75,7 @@ func (c *Client) RebindJob(ctx context.Context, receipt Receipt, encoded string)
 	if e = c.reauthorize(bounded, rr.Preview.Plan, rr.Preview.PolicyDigest); e != nil {
 		return RebindResult{}, e
 	}
-	identity, _, e := c.provider.Authorize(bounded, rejectTransport{})
+	identity, _, e := c.authorize(bounded, rejectTransport{})
 	if e != nil {
 		return RebindResult{}, sanitizedAuth(e)
 	}
@@ -102,7 +102,7 @@ func (c *Client) RebindJob(ctx context.Context, receipt Receipt, encoded string)
 		return RebindResult{}, deadlineError()
 	}
 	var result RebindResult
-	e = c.mutateRun(rr.Receipt.RunID, func(current *runRecord) error {
+	e = c.mutateRunContext(bounded, rr.Receipt.RunID, func(current *runRecord) error {
 		if current.ActivePrincipal != rr.ActivePrincipal || !equalJSON(current.Cursor, rr.Cursor) {
 			return fail("cursor_invalid")
 		}

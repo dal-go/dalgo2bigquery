@@ -180,7 +180,7 @@ func (c *Client) reauthorize(ctx context.Context, plan ReadPlan, policy string) 
 	if e := c.checkBound(ctx); e != nil {
 		return e
 	}
-	current, p, e := c.prepare(ctx)
+	current, p, e := c.prepareBounded(ctx)
 	if bound := c.checkBound(ctx); bound != nil {
 		return bound
 	}
@@ -215,7 +215,19 @@ func (c *Client) Preview(ctx context.Context, plan ReadPlan, execution Execution
 	if e != nil || budget < cap || !projectID.MatchString(execution.JobProject) || !validPrincipal(execution.Principal) {
 		return Preview{}, fail("invalid_input")
 	}
-	current, policy, e := c.prepare(ctx)
+	scope := newPreviewScope(bounds, c.clock.Now())
+	ctx, wallFinish := boundedContext(ctx, time.Duration(bounds.WallMs)*time.Millisecond)
+	defer wallFinish()
+	preparedCtx, finish, e := c.preparation(ctx, scope, false)
+	if e != nil {
+		return Preview{}, e
+	}
+	current, policy, e := c.prepareBounded(preparedCtx)
+	boundError := c.checkBound(preparedCtx)
+	finish()
+	if boundError != nil {
+		return Preview{}, boundError
+	}
 	if e != nil {
 		return Preview{}, sanitizedAuth(e)
 	}
@@ -226,7 +238,6 @@ func (c *Client) Preview(ctx context.Context, plan ReadPlan, execution Execution
 	if current.Digest != plan.Digest {
 		return Preview{}, fail("approval_changed")
 	}
-	scope := newPreviewScope(bounds, c.clock.Now())
 	obs, e := c.observe(ctx, profile, scope, &execution.Principal)
 	if e != nil {
 		return Preview{}, e
@@ -241,14 +252,14 @@ func (c *Client) Preview(ctx context.Context, plan ReadPlan, execution Execution
 	if e != nil {
 		return Preview{}, e
 	}
-	e = c.ledger.update(func(s *ledgerState) error { s.Previews[preview.Nonce] = previewRecord{Preview: preview}; return nil })
+	e = c.ledger.updateContext(ctx, func(s *ledgerState) error { s.Previews[preview.Nonce] = previewRecord{Preview: preview}; return nil })
 	return preview, e
 }
 func (c *Client) Approve(preview Preview, digest string) (Approval, error) {
 	if digest == "" || digest != preview.ApprovalDigest {
 		return Approval{}, fail("approval_required")
 	}
-	e := c.ledger.update(func(s *ledgerState) error {
+	e := c.ledger.readContext(context.Background(), func(s *ledgerState) error {
 		stored, ok := s.Previews[preview.Nonce]
 		if !ok || stored.Used {
 			return fail("approval_required")
@@ -261,7 +272,7 @@ func (c *Client) Approve(preview Preview, digest string) (Approval, error) {
 	if e != nil {
 		return Approval{}, e
 	}
-	return Approval{preview.Nonce, digest, c}, nil
+	return Approval{preview.Nonce, digest, c, preview.Bounds}, nil
 }
 func queryRequest(plan ReadPlan, execution Execution, bounds Bounds, location string, dry bool) (*bq.QueryRequest, error) {
 	cap, e := positiveBytes(execution.MaximumBytesBilled)

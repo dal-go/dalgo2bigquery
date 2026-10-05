@@ -55,3 +55,38 @@ func TestWindowsLedgerRefusesForeignDACL(t *testing.T) {
 		t.Fatal(e)
 	}
 }
+
+// Explicit file security must match the token user even when Windows' default
+// token owner is an administrator group. Keep exact owner and DACL validation.
+func TestWindowsLedgerCreatedFilesHaveExplicitOwner(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "private-ledger")
+	l, e := NewFileLedger(dir)
+	if e != nil {
+		t.Fatal("private directory", e)
+	}
+	lock, e := l.lock("session.lock")
+	if e != nil {
+		t.Fatal("explicit lock owner/DACL", e)
+	}
+	if !ledgerPrivateFile(lock) {
+		t.Fatal("lock privacy")
+	}
+	lock.Close()
+	temp, e := ledgerTemp(dir)
+	if e != nil {
+		t.Fatal("explicit temp creation", e)
+	}
+	name := temp.Name()
+	defer os.Remove(name)
+	if !ledgerPrivateFile(temp) {
+		temp.Close()
+		t.Fatal("temp privacy")
+	}
+	temp.Close()
+	if e = l.update(func(*ledgerState) error { return nil }); e != nil {
+		t.Fatal("persist explicit owner", e)
+	}
+	if !ledgerPrivatePath(filepath.Join(dir, "session.json"), false) {
+		t.Fatal("snapshot privacy")
+	}
+}

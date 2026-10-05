@@ -96,7 +96,15 @@ func ledgerOpen(path string, create bool) (*os.File, error) {
 		access |= windows.GENERIC_WRITE
 		disposition = windows.OPEN_ALWAYS
 	}
-	h, e := windows.CreateFile(name, access, windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE|windows.FILE_SHARE_DELETE, nil, disposition, windows.FILE_FLAG_OPEN_REPARSE_POINT, 0)
+	var sa *windows.SecurityAttributes
+	if create {
+		sd, _, err := ledgerSecurity()
+		if err != nil {
+			return nil, err
+		}
+		sa = &windows.SecurityAttributes{Length: uint32(unsafe.Sizeof(windows.SecurityAttributes{})), SecurityDescriptor: sd}
+	}
+	h, e := windows.CreateFile(name, access, windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE|windows.FILE_SHARE_DELETE, sa, disposition, windows.FILE_FLAG_OPEN_REPARSE_POINT, 0)
 	if e != nil {
 		return nil, e
 	}
@@ -139,3 +147,20 @@ func ledgerReplace(from, to string) error {
 // MoveFileEx WRITE_THROUGH persists the replacement; directory FlushFileBuffers
 // is unsupported by Windows. The new file was separately FlushFileBuffers'd by Sync.
 func ledgerSyncDir(string) error { return nil }
+
+func ledgerTemp(dir string) (*os.File, error) {
+	path := filepath.Join(dir, ".ledger-"+opaqueID())
+	name, e := windows.UTF16PtrFromString(path)
+	if e != nil {
+		return nil, e
+	}
+	sd, _, e := ledgerSecurity()
+	if e != nil {
+		return nil, e
+	}
+	h, e := windows.CreateFile(name, windows.GENERIC_READ|windows.GENERIC_WRITE|windows.READ_CONTROL, windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE|windows.FILE_SHARE_DELETE, &windows.SecurityAttributes{Length: uint32(unsafe.Sizeof(windows.SecurityAttributes{})), SecurityDescriptor: sd}, windows.CREATE_NEW, windows.FILE_FLAG_OPEN_REPARSE_POINT, 0)
+	if e != nil {
+		return nil, e
+	}
+	return os.NewFile(uintptr(h), path), nil
+}

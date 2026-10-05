@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -44,16 +45,20 @@ type sdkAPI struct {
 type dispatchGate struct {
 	boundedResponse func(*http.Response, error) (*http.Response, error)
 	beforeDispatch  func() error
+	runID           string
 	base            http.RoundTripper
 	mu              sync.Mutex
 	method, url     string
 	bodyDigest      string
 	attempts        int
 	submit          bool
-	dispatched      bool
+	dispatched      atomic.Bool
 }
 
 func (g *dispatchGate) RoundTrip(req *http.Request) (*http.Response, error) {
+	if req.Context().Err() != nil {
+		return nil, deadlineError()
+	}
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	if req.URL.Scheme != "https" || req.URL.Host != "bigquery.googleapis.com" || req.URL.User != nil || !strings.HasPrefix(req.URL.Path, "/bigquery/v2/") || req.URL.Fragment != "" {
@@ -61,8 +66,8 @@ func (g *dispatchGate) RoundTrip(req *http.Request) (*http.Response, error) {
 	}
 	var digest string
 	if req.Body != nil {
-		raw, e := io.ReadAll(io.LimitReader(req.Body, 256<<10+1))
-		req.Body.Close()
+		raw, e := awaitDependency(req.Context(), func() ([]byte, error) { return io.ReadAll(io.LimitReader(req.Body, 256<<10+1)) }, nil)
+		closeBody(req.Body)
 		if e != nil || len(raw) > 256<<10 {
 			return nil, fail("invalid_input")
 		}
@@ -85,13 +90,37 @@ func (g *dispatchGate) RoundTrip(req *http.Request) (*http.Response, error) {
 	// No idempotency markers and no replayable body reaches the actual dispatch.
 	req.Header.Del("Idempotency-Key")
 	req.Header.Del("X-Idempotency-Key")
+	leave, e := enterActualRequest(g.runID)
+	if e != nil {
+		return nil, e
+	}
 	if g.beforeDispatch != nil {
-		if e := g.beforeDispatch(); e != nil {
+		if e = g.beforeDispatch(); e != nil {
+			leave()
 			return nil, e
 		}
 	}
-	g.dispatched = true
-	resp, e := g.base.RoundTrip(req)
+	g.dispatched.Store(true)
+	resp, e := awaitDependency(req.Context(), func() (*http.Response, error) {
+		if req.Context().Err() != nil {
+			leave()
+			return nil, deadlineError()
+		}
+		resp, err := g.base.RoundTrip(req)
+		if resp == nil || resp.Body == nil {
+			leave()
+		} else {
+			resp.Body = &trackedBody{body: resp.Body, leave: leave}
+		}
+		return resp, err
+	}, func(resp *http.Response) {
+		if resp != nil && resp.Body != nil {
+			_ = resp.Body.Close()
+		}
+	})
+	if req.Context().Err() != nil {
+		return nil, deadlineError()
+	}
 	if g.boundedResponse != nil {
 		return g.boundedResponse(resp, e)
 	}
@@ -99,6 +128,7 @@ func (g *dispatchGate) RoundTrip(req *http.Request) (*http.Response, error) {
 }
 
 type boundedTransport struct {
+	mu         sync.Mutex
 	guard      *dispatchGate
 	gate       http.RoundTripper
 	c          *Client
@@ -136,39 +166,35 @@ func (t *boundedTransport) RoundTrip(req *http.Request) (*http.Response, error) 
 	if !matches {
 		return nil, fail("invalid_input")
 	}
-	return t.gate.RoundTrip(req)
+	return awaitDependency(req.Context(), func() (*http.Response, error) { return t.gate.RoundTrip(req) }, func(resp *http.Response) {
+		if resp != nil && resp.Body != nil {
+			_ = resp.Body.Close()
+		}
+	})
 }
 func (t *boundedTransport) validateResponse(resp *http.Response, e error) (*http.Response, error) {
+	t.mu.Lock()
 	t.raw = nil
 	t.readErr = nil
 	t.status = 0
 	t.retryAfter = ""
+	t.mu.Unlock()
 	if e != nil {
 		return nil, e
 	}
 	if resp == nil || resp.Body == nil {
 		return nil, fail("malformed_wire")
 	}
+	t.mu.Lock()
 	t.status = resp.StatusCode
 	t.retryAfter = resp.Header.Get("Retry-After")
-	defer resp.Body.Close()
+	t.mu.Unlock()
+	defer closeBody(resp.Body)
 	if e := t.bound(); e != nil {
-		t.readErr = e
+		t.setError(e)
 		return nil, e
 	}
-	var reader io.Reader = resp.Body
-	if encoding := resp.Header.Get("Content-Encoding"); encoding != "" {
-		if encoding != "gzip" {
-			return nil, fail("malformed_wire")
-		}
-		gz, e := gzip.NewReader(reader)
-		if e != nil {
-			return nil, fail("malformed_wire")
-		}
-		defer gz.Close()
-		reader = gz
-		resp.Header.Del("Content-Encoding")
-	}
+
 	remaining, e := t.c.remaining(t.s)
 	if e != nil {
 		return nil, e
@@ -177,36 +203,57 @@ func (t *boundedTransport) validateResponse(resp *http.Response, e error) (*http
 	if remaining < limit {
 		limit = remaining
 	}
-	raw, e := io.ReadAll(io.LimitReader(boundReader{t, reader}, limit+1))
-	if charge := t.c.charge(t.s, int64(len(raw))); charge != nil {
-		t.readErr = charge
+	raw, e := awaitDependency(t.ctx, func() ([]byte, error) {
+		var reader io.Reader = boundReader{t, resp.Body}
+		if encoding := resp.Header.Get("Content-Encoding"); encoding != "" {
+			if encoding != "gzip" {
+				return nil, fail("malformed_wire")
+			}
+			gz, e := gzip.NewReader(reader)
+			if e != nil {
+				return nil, fail("malformed_wire")
+			}
+			defer gz.Close()
+			reader = gz
+			resp.Header.Del("Content-Encoding")
+		}
+		return io.ReadAll(io.LimitReader(boundReader{t, reader}, limit+1))
+	}, nil)
+	if bound := t.bound(); bound != nil {
+		t.setError(bound)
+		return nil, bound
+	}
+	if charge := t.c.charge(t.ctx, t.s, int64(len(raw))); charge != nil {
+		t.setError(charge)
 		return nil, charge
 	}
 	if bound := t.bound(); bound != nil {
-		t.readErr = bound
+		t.setError(bound)
 		return nil, bound
 	}
 	if e != nil {
-		t.readErr = fail("malformed_wire")
-		return nil, t.readErr
+		t.setError(fail("malformed_wire"))
+		return nil, fail("malformed_wire")
 	}
 	if int64(len(raw)) > limit {
-		t.readErr = fail("response_limit")
-		return nil, t.readErr
+		t.setError(fail("response_limit"))
+		return nil, fail("response_limit")
 	}
-	v, e := ParseJSON(raw, t.s.bounds.ResponseBytes)
+	v, e := awaitDependency(t.ctx, func() (any, error) { return ParseJSON(raw, t.s.bounds.ResponseBytes) }, nil)
 	if e != nil {
-		t.readErr = e
+		t.setError(e)
 		return nil, e
 	}
 	if _, e = object(v); e != nil {
-		t.readErr = e
+		t.setError(e)
 		return nil, e
 	}
+	t.mu.Lock()
 	t.raw = v
+	t.mu.Unlock()
 	if t.ctx != nil && (t.ctx.Err() != nil || !t.c.clock.Now().Before(t.deadline)) {
-		t.readErr = deadlineError()
-		return nil, t.readErr
+		t.setError(deadlineError())
+		return nil, deadlineError()
 	}
 	resp.Body = io.NopCloser(bytes.NewReader(raw))
 	resp.ContentLength = int64(len(raw))
@@ -222,9 +269,9 @@ func (c *Client) remaining(s *operationScope) (int64, error) {
 	}
 	return s.bounds.TotalResponseBytes - s.bytes, nil
 }
-func (c *Client) charge(s *operationScope, n int64) error {
+func (c *Client) charge(ctx context.Context, s *operationScope, n int64) error {
 	if s.runID != "" {
-		return c.mutateRun(s.runID, func(r *runRecord) error { r.Receipt.Counters.Bytes += n; return nil })
+		return c.mutateRunContext(ctx, s.runID, func(r *runRecord) error { r.Receipt.Counters.Bytes += n; return nil })
 	}
 	s.bytes += n
 	return nil
@@ -238,7 +285,7 @@ func (c *Client) call(ctx context.Context, s *operationScope, principal *Princip
 	}
 	attempts := 1
 	var last error
-	gate := &dispatchGate{base: c.transport, submit: s.submit}
+	gate := &dispatchGate{base: c.transport, submit: s.submit, runID: s.runID}
 	for attempt := 0; attempt < attempts; attempt++ {
 		remaining, e := c.remaining(s)
 		if e != nil {
@@ -261,7 +308,7 @@ func (c *Client) call(ctx context.Context, s *operationScope, principal *Princip
 			return nil, fail("local_stopped")
 		}
 		op, cancel := context.WithTimeout(ctx, deadline.Sub(c.clock.Now()))
-		identity, auth, e := c.provider.Authorize(op, gate)
+		identity, auth, e := c.authorize(op, gate)
 		if op.Err() != nil || !c.clock.Now().Before(deadline) {
 			cancel()
 			return nil, deadlineError()
@@ -295,7 +342,7 @@ func (c *Client) call(ctx context.Context, s *operationScope, principal *Princip
 			if !s.result || s.runID == "" {
 				return nil
 			}
-			return c.mutateRun(s.runID, func(r *runRecord) error {
+			return c.mutateRunContext(op, s.runID, func(r *runRecord) error {
 				if r.Receipt.Counters.Pages >= r.Receipt.Bounds.MaxPages {
 					return fail("response_limit")
 				}
@@ -326,31 +373,32 @@ func (c *Client) call(ctx context.Context, s *operationScope, principal *Princip
 			return nil, fail("invalid_input")
 		}
 		service.BasePath = apiOrigin
-		e = fn(sdkAPI{service, op})
-		if s.submit && gate.dispatched {
+		_, e = awaitDependency(op, func() (struct{}, error) { return struct{}{}, fn(sdkAPI{service, op}) }, nil)
+		if s.submit && gate.wasDispatched() {
 			s.dispatched = true
 		}
+		rawSnapshot, statusSnapshot, retrySnapshot, readSnapshot := bounded.snapshot()
 		cancel()
-		if s.submit && !control && s.runID != "" && gate.dispatched {
-			if m, ok := bounded.raw.(map[string]any); ok {
-				_ = c.captureJob(s.runID, m)
+		if s.submit && !control && s.runID != "" && gate.wasDispatched() {
+			if m, ok := rawSnapshot.(map[string]any); ok {
+				_ = c.captureJob(ctx, s.runID, m)
 			}
 		}
 		if e == nil {
-			return bounded.raw, nil
+			return rawSnapshot, nil
 		}
-		if bounded.readErr != nil {
-			return bounded.raw, bounded.readErr
+		if readSnapshot != nil {
+			return rawSnapshot, readSnapshot
 		}
 		var safe *Error
 		if errors.As(e, &safe) {
-			return bounded.raw, safe
+			return rawSnapshot, safe
 		}
 		if ctx.Err() != nil {
-			return bounded.raw, fail("local_stopped")
+			return rawSnapshot, fail("local_stopped")
 		}
 		code := "remote_failed"
-		switch bounded.status {
+		switch statusSnapshot {
 		case 0:
 			code = "remote_failed"
 		case 401:
@@ -360,18 +408,18 @@ func (c *Client) call(ctx context.Context, s *operationScope, principal *Princip
 		case 404:
 			code = "result_expired"
 		default:
-			if bounded.status >= 200 && bounded.status < 300 {
+			if statusSnapshot >= 200 && statusSnapshot < 300 {
 				code = "malformed_wire"
 			}
 		}
 		last = fail(code)
-		if gate.method == "GET" && (bounded.status == 429 || bounded.status >= 500 || bounded.status == 0) {
+		if gate.method == "GET" && (statusSnapshot == 429 || statusSnapshot >= 500 || statusSnapshot == 0) {
 			attempts = 3
 			if attempt+1 < attempts {
 				delay := time.Duration(100*(1<<attempt)) * time.Millisecond
-				if seconds, err := strconv.Atoi(bounded.retryAfter); err == nil && seconds >= 0 {
+				if seconds, err := strconv.Atoi(retrySnapshot); err == nil && seconds >= 0 {
 					delay = time.Duration(seconds) * time.Second
-				} else if at, err := http.ParseTime(bounded.retryAfter); err == nil {
+				} else if at, err := http.ParseTime(retrySnapshot); err == nil {
 					delay = at.Sub(c.clock.Now())
 				}
 				if delay < 0 {
@@ -381,23 +429,23 @@ func (c *Client) call(ctx context.Context, s *operationScope, principal *Princip
 					delay = 15 * time.Second
 				}
 				if (!control && !c.clock.Now().Add(delay).Before(s.deadline)) || (control && !c.clock.Now().Add(delay).Before(s.controlDeadline)) {
-					return bounded.raw, deadlineError()
+					return rawSnapshot, deadlineError()
 				}
 				if e = c.clock.Sleep(ctx, delay); e != nil {
-					return bounded.raw, e
+					return rawSnapshot, e
 				}
 				continue
 			}
 		}
-		if s.submit && !control && gate.dispatched {
+		if s.submit && !control && gate.wasDispatched() {
 			if s.runID != "" {
 				if r, err := c.loadRun(s.runID); err == nil && r.Receipt.Job != nil {
-					return bounded.raw, last
+					return rawSnapshot, last
 				}
 			}
-			return bounded.raw, fail("submission_unknown")
+			return rawSnapshot, fail("submission_unknown")
 		}
-		return bounded.raw, last
+		return rawSnapshot, last
 	}
 	return nil, last
 }
@@ -416,7 +464,7 @@ func (c *Client) checkIdentity(ctx context.Context, p Principal) error {
 	if e := c.checkBound(ctx); e != nil {
 		return e
 	}
-	identity, _, e := c.provider.Authorize(ctx, rejectTransport{})
+	identity, _, e := c.authorize(ctx, rejectTransport{})
 	if bound := c.checkBound(ctx); bound != nil {
 		return bound
 	}
@@ -461,4 +509,13 @@ func (b boundReader) Read(p []byte) (int, error) {
 		return 0, e
 	}
 	return b.reader.Read(p)
+}
+
+func (g *dispatchGate) wasDispatched() bool { return g.dispatched.Load() }
+
+func (t *boundedTransport) setError(e error) { t.mu.Lock(); defer t.mu.Unlock(); t.readErr = e }
+func (t *boundedTransport) snapshot() (any, int, string, error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.raw, t.status, t.retryAfter, t.readErr
 }

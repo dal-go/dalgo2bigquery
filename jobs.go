@@ -32,12 +32,12 @@ func parseJob(v any) (JobRef, error) {
 	}
 	return JobRef{p, j, l}, nil
 }
-func (c *Client) captureJob(id string, m map[string]any) error {
+func (c *Client) captureJob(ctx context.Context, id string, m map[string]any) error {
 	job, e := parseJob(m["jobReference"])
 	if e != nil {
 		return e
 	}
-	return c.mutateRun(id, func(r *runRecord) error {
+	return c.mutateRunContext(ctx, id, func(r *runRecord) error {
 		if job.ProjectID != r.Preview.Execution.JobProject || job.Location != r.Preview.Observation.Location {
 			return fail("malformed_wire")
 		}
@@ -50,12 +50,33 @@ func (c *Client) captureJob(id string, m map[string]any) error {
 	})
 }
 func (c *Client) Execute(ctx context.Context, a Approval) (*Run, error) {
+	callerCtx := ctx
 	if a.client != c || a.nonce == "" || a.digest == "" {
 		return nil, fail("approval_required")
 	}
+	if e := a.bounds.validate(); e != nil {
+		return nil, fail("approval_required")
+	}
+	started := c.clock.Now()
+	ctx, finish := boundedContext(ctx, time.Duration(a.bounds.WallMs)*time.Millisecond)
+	defer finish()
+	var original previewRecord
+	if e := c.ledger.readContext(ctx, func(s *ledgerState) error {
+		p, ok := s.Previews[a.nonce]
+		if !ok {
+			return fail("approval_required")
+		}
+		original = p
+		return nil
+	}); e != nil {
+		return nil, e
+	}
+	if original.Preview.Bounds != a.bounds {
+		return nil, fail("approval_changed")
+	}
 	id := opaqueID()
 	var record runRecord
-	e := c.ledger.update(func(s *ledgerState) error {
+	e := c.ledger.updateContext(ctx, func(s *ledgerState) error {
 		p, ok := s.Previews[a.nonce]
 		if !ok || p.Used {
 			return fail("approval_required")
@@ -80,7 +101,7 @@ func (c *Client) Execute(ctx context.Context, a Approval) (*Run, error) {
 		if cap > budget-reserved {
 			return fail("budget_exhausted")
 		}
-		now := c.clock.Now()
+		now := started
 		p.Used = true
 		s.Previews[a.nonce] = p
 		receipt := Receipt{Version: 1, RunID: id, ApprovalDigest: a.digest, SourceDigest: p.Preview.Plan.SourceDigest, ObservationDigest: p.Preview.Observation.Digest, Principal: p.Preview.Execution.Principal, State: "reserved", RunStartedAt: now, ExecutionDeadline: now.Add(time.Duration(p.Preview.Bounds.WallMs) * time.Millisecond), Bounds: p.Preview.Bounds, Warnings: []string{}, ResidualSourceReplacementRace: true}
@@ -91,7 +112,7 @@ func (c *Client) Execute(ctx context.Context, a Approval) (*Run, error) {
 	if e != nil {
 		return nil, e
 	}
-	run := newRun(c, ctx, id)
+	run := newRun(c, callerCtx, id)
 	release, e := c.ledger.lease(ctx, id)
 	if e != nil {
 		return run, e
@@ -100,7 +121,7 @@ func (c *Client) Execute(ctx context.Context, a Approval) (*Run, error) {
 	scope := runScope(record)
 	profile := c.profiles[record.Preview.Plan.SourceDigest]
 	beforeSubmit := func(e error) (*Run, error) {
-		_ = c.mutateRun(id, func(r *runRecord) error {
+		_ = c.settleRun(id, func(r *runRecord) error {
 			r.Receipt.State = "failed"
 			r.Receipt.Reason = reasonOf(e)
 			r.Reservation = 0
@@ -108,7 +129,13 @@ func (c *Client) Execute(ctx context.Context, a Approval) (*Run, error) {
 		})
 		return run, e
 	}
-	if e = c.reauthorize(ctx, record.Preview.Plan, record.Preview.PolicyDigest); e != nil {
+	preparedCtx, preparedCancel, e := c.preparation(ctx, scope, false)
+	if e != nil {
+		return beforeSubmit(e)
+	}
+	e = c.reauthorize(preparedCtx, record.Preview.Plan, record.Preview.PolicyDigest)
+	preparedCancel()
+	if e != nil {
 		return beforeSubmit(e)
 	}
 	obs, e := c.observe(ctx, profile, scope, &record.Receipt.Principal)
@@ -133,25 +160,31 @@ func (c *Client) Execute(ctx context.Context, a Approval) (*Run, error) {
 	if obs.Digest != record.Preview.Observation.Digest {
 		return beforeSubmit(fail("source_changed"))
 	}
-	if e = c.reauthorize(ctx, record.Preview.Plan, record.Preview.PolicyDigest); e != nil {
+	preparedCtx, preparedCancel, e = c.preparation(ctx, scope, false)
+	if e != nil {
+		return beforeSubmit(e)
+	}
+	e = c.reauthorize(preparedCtx, record.Preview.Plan, record.Preview.PolicyDigest)
+	preparedCancel()
+	if e != nil {
 		return beforeSubmit(e)
 	}
 	req, e := queryRequest(record.Preview.Plan, record.Preview.Execution, record.Preview.Bounds, obs.Location, false)
 	if e != nil {
 		return beforeSubmit(e)
 	}
-	e = c.mutateRun(id, func(r *runRecord) error { r.Receipt.State = "submitting"; return nil })
+	e = c.mutateRunContext(ctx, id, func(r *runRecord) error { r.Receipt.State = "submitting"; return nil })
 	if e != nil {
 		return run, e
 	}
 	scope.submit = true
 	scope.result = true
-	raw, e := c.call(run.ctx, scope, &record.Receipt.Principal, false, func(api sdkAPI) error {
+	raw, e := c.call(ctx, scope, &record.Receipt.Principal, false, func(api sdkAPI) error {
 		_, e := api.service.Jobs.Query(record.Preview.Execution.JobProject, req).Context(api.ctx).Do()
 		return e
 	})
 	if e != nil {
-		_ = c.mutateRun(id, func(r *runRecord) error {
+		_ = c.settleRun(id, func(r *runRecord) error {
 			if r.Receipt.Job == nil && scope.dispatched {
 				r.Receipt.State = "submission_unknown"
 			} else if r.Receipt.Job == nil {
@@ -169,15 +202,15 @@ func (c *Client) Execute(ctx context.Context, a Approval) (*Run, error) {
 	if e != nil {
 		return run, e
 	}
-	if e = c.captureJob(id, m); e != nil {
-		_ = c.mutateRun(id, func(r *runRecord) error {
+	if e = c.captureJob(ctx, id, m); e != nil {
+		_ = c.settleRun(id, func(r *runRecord) error {
 			r.Receipt.State = "submission_unknown"
 			r.Receipt.Reason = "malformed_wire"
 			return nil
 		})
 		return run, fail("submission_unknown")
 	}
-	if e = run.loadPage(m, nil, false); e != nil {
+	if e = run.loadPage(ctx, m, nil, false); e != nil {
 		run.stopped(e)
 		return run, e
 	}
@@ -194,7 +227,7 @@ func codeOf(e error) string {
 }
 func (c *Client) findJob(job JobRef) (runRecord, error) {
 	var run runRecord
-	e := c.ledger.update(func(s *ledgerState) error {
+	e := c.ledger.readContext(context.Background(), func(s *ledgerState) error {
 		for _, r := range s.Runs {
 			if r.Receipt.Job != nil && *r.Receipt.Job == job {
 				run = r
@@ -291,7 +324,7 @@ func (c *Client) Status(ctx context.Context, job JobRef) (JobStatus, error) {
 			}
 		}
 	}
-	e = c.mutateRun(r.Receipt.RunID, func(rr *runRecord) error {
+	e = c.mutateRunContext(ctx, r.Receipt.RunID, func(rr *runRecord) error {
 		if state == "DONE" {
 			if rr.Receipt.State == "cancel_requested" && result.State == "completed" {
 				result.Warnings = append(result.Warnings, "completed_before_cancel")
@@ -355,7 +388,7 @@ func (c *Client) CancelJob(ctx context.Context, job JobRef) (CancelResult, error
 	if e != nil || ref != job {
 		return CancelResult{job, "unknown"}, fail("cancellation_unknown")
 	}
-	e = c.mutateRun(r.Receipt.RunID, func(rr *runRecord) error {
+	e = c.mutateRunContext(ctx, r.Receipt.RunID, func(rr *runRecord) error {
 		if rr.Receipt.State != "completed" && rr.Receipt.State != "failed" && rr.Receipt.State != "cancelled" {
 			rr.Receipt.State = "cancel_requested"
 		}
