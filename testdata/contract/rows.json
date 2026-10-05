@@ -1,0 +1,106 @@
+[
+  {
+    "id": "rows-present-null",
+    "kind": "rows",
+    "input": "[{\"f\":[{\"v\":null}]}]",
+    "field": {
+      "name": "s",
+      "type": "STRING",
+      "mode": "NULLABLE"
+    },
+    "expected": [
+      [
+        {
+          "type": "STRING",
+          "value": null
+        }
+      ]
+    ],
+    "error": ""
+  },
+  {
+    "id": "rows-omitted-v",
+    "kind": "rows",
+    "input": "[{\"f\":[{}]}]",
+    "field": {
+      "name": "s",
+      "type": "STRING",
+      "mode": "NULLABLE"
+    },
+    "expected": null,
+    "error": "malformed_wire"
+  },
+  {
+    "id": "rows-wrong-cell-width",
+    "kind": "rows",
+    "input": "[{\"f\":[]}]",
+    "field": {
+      "name": "s",
+      "type": "STRING",
+      "mode": "NULLABLE"
+    },
+    "expected": null,
+    "error": "malformed_wire"
+  },
+  {
+    "id": "rows-numeric-wire",
+    "kind": "rows",
+    "input": "[{\"f\":[{\"v\":12}]}]",
+    "field": {
+      "name": "s",
+      "type": "STRING",
+      "mode": "NULLABLE"
+    },
+    "expected": null,
+    "error": "malformed_wire"
+  },
+  {
+    "id": "rows-duplicate-v",
+    "kind": "rows",
+    "input": "[{\"f\":[{\"v\":\"a\",\"v\":\"b\"}]}]",
+    "field": {
+      "name": "s",
+      "type": "STRING",
+      "mode": "NULLABLE"
+    },
+    "expected": null,
+    "error": "malformed_wire"
+  },
+  {
+    "id": "rows-duplicate-keyless-rows",
+    "kind": "rows",
+    "input": "[{\"f\":[{\"v\":\"a\"}]},{\"f\":[{\"v\":\"a\"}]}]",
+    "field": {
+      "name": "s",
+      "type": "STRING",
+      "mode": "NULLABLE"
+    },
+    "expected": [
+      [
+        {
+          "type": "STRING",
+          "value": "a"
+        }
+      ],
+      [
+        {
+          "type": "STRING",
+          "value": "a"
+        }
+      ]
+    ],
+    "error": ""
+  },
+  {
+    "id": "rows-empty-results",
+    "kind": "rows",
+    "input": "[]",
+    "field": {
+      "name": "s",
+      "type": "STRING",
+      "mode": "NULLABLE"
+    },
+    "expected": [],
+    "error": ""
+  }
+]
