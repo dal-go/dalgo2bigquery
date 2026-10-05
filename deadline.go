@@ -15,7 +15,7 @@ func OperationDeadline(now, executionDeadline, callerDeadline time.Time, httpLim
 	deadline := now.Add(httpLimit)
 	if !control {
 		if !now.Before(executionDeadline) {
-			return time.Time{}, fail("local_stopped")
+			return time.Time{}, deadlineError()
 		}
 		if executionDeadline.Before(deadline) {
 			deadline = executionDeadline
@@ -29,3 +29,5 @@ func OperationDeadline(now, executionDeadline, callerDeadline time.Time, httpLim
 	}
 	return deadline, nil
 }
+
+func deadlineError() error { return &Error{Code: "local_stopped", Reason: "deadline"} }

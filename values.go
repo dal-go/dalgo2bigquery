@@ -12,9 +12,12 @@ import (
 )
 
 type Field struct {
-	Name string `json:"name"`
-	Type string `json:"type"`
-	Mode string `json:"mode"`
+	Name      string  `json:"name"`
+	Type      string  `json:"type"`
+	Mode      string  `json:"mode"`
+	Fields    []Field `json:"fields,omitempty"`
+	Precision string  `json:"precision,omitempty"`
+	Scale     string  `json:"scale,omitempty"`
 }
 type Cell struct {
 	Type  string `json:"type"`
@@ -92,6 +95,23 @@ func NormalizeScalar(field Field, value any) (Cell, error) {
 		maxScale, maxInteger := 9, 29
 		if typ == "BIGNUMERIC" {
 			maxScale, maxInteger = 38, 39
+		}
+		if field.Precision != "" {
+			precision, e := strconv.Atoi(field.Precision)
+			if e != nil {
+				return Cell{}, fail("unsupported_value")
+			}
+			configuredScale := 0
+			if field.Scale != "" {
+				configuredScale, e = strconv.Atoi(field.Scale)
+				if e != nil {
+					return Cell{}, fail("unsupported_value")
+				}
+			}
+			if configuredScale < 0 || configuredScale > maxScale || precision < 1 || precision > maxInteger+configuredScale {
+				return Cell{}, fail("unsupported_value")
+			}
+			maxScale, maxInteger = configuredScale, precision-configuredScale
 		}
 		if scale > maxScale || len(strings.TrimLeft(parts[0], "0")) > maxInteger {
 			return Cell{}, fail("unsupported_value")
