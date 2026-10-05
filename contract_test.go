@@ -20,6 +20,7 @@ type scenario struct {
 	Digest    string `json:"digest"`
 	Field     Field  `json:"field"`
 	Value     any    `json:"value"`
+	InputHex  string `json:"input_hex"`
 	Expected  any    `json:"expected"`
 	Error     string `json:"error"`
 	Payload   string `json:"payload"`
@@ -41,15 +42,17 @@ func TestSharedCorpus(t *testing.T) {
 		t.Fatal(e)
 	}
 	var manifest struct {
-		Files    map[string]string `json:"files"`
-		Revision int               `json:"revision"`
+		Files         map[string]string `json:"files"`
+		Revision      int               `json:"revision"`
+		ScenarioCount int               `json:"scenario_count"`
 	}
 	if e = json.Unmarshal(raw, &manifest); e != nil {
 		t.Fatal(e)
 	}
-	if manifest.Revision != 1 {
+	if manifest.Revision != 2 {
 		t.Fatal("corpus revision")
 	}
+	seen := map[string]bool{}
 	for name, digest := range manifest.Files {
 		data, e := os.ReadFile(filepath.Join("testdata/contract", name))
 		if e != nil {
@@ -64,6 +67,10 @@ func TestSharedCorpus(t *testing.T) {
 			t.Fatal(e)
 		}
 		for _, c := range cases {
+			if c.ID == "" || seen[c.ID] {
+				t.Fatal("duplicate/empty scenario id", c.ID)
+			}
+			seen[c.ID] = true
 			t.Run(c.ID, func(t *testing.T) {
 				switch c.Kind {
 				case "canonical":
@@ -82,6 +89,22 @@ func TestSharedCorpus(t *testing.T) {
 					}
 				case "scalar":
 					got, e := NormalizeScalar(c.Field, c.Value)
+					if errorCode(e) != c.Error {
+						t.Fatalf("code=%s", errorCode(e))
+					}
+					if e == nil {
+						actual, _ := json.Marshal(got.Value)
+						expected, _ := json.Marshal(c.Expected)
+						if string(actual) != string(expected) {
+							t.Fatalf("value %s != %s", actual, expected)
+						}
+					}
+				case "scalar-bytes":
+					raw, e := hex.DecodeString(c.InputHex)
+					if e != nil {
+						t.Fatal(e)
+					}
+					got, e := NormalizeScalar(c.Field, string(raw))
 					if errorCode(e) != c.Error {
 						t.Fatalf("code=%s", errorCode(e))
 					}
@@ -117,6 +140,9 @@ func TestSharedCorpus(t *testing.T) {
 				}
 			})
 		}
+	}
+	if len(seen) != manifest.ScenarioCount {
+		t.Fatal("manifest scenario count", len(seen), manifest.ScenarioCount)
 	}
 }
 func TestRawBoundsAndSurrogates(t *testing.T) {
@@ -169,5 +195,26 @@ func TestOriginalExecutionDeadline(t *testing.T) {
 	}
 	if _, e = OperationDeadline(start.Add(121*time.Second), deadline, time.Time{}, 15*time.Second, true, 0); errorCode(e) != "response_limit" {
 		t.Fatal("bytes reset", e)
+	}
+}
+
+func TestNormalizeScalarUnicodeBoundary(t *testing.T) {
+	for _, raw := range [][]byte{{0xff}, {0xed, 0xa0, 0x80}, {0xf0, 0x9f, 0x92}} {
+		if _, e := NormalizeScalar(Field{Type: "STRING"}, string(raw)); errorCode(e) != "malformed_wire" {
+			t.Fatalf("invalid UTF-8 accepted: %v", e)
+		}
+	}
+	for _, value := range []any{nil, "", "é", "e\u0301", "😀<>&\u2028\u2029"} {
+		got, e := NormalizeScalar(Field{Type: "STRING"}, value)
+		if e != nil || got.Value != value {
+			t.Fatalf("changed scalar %q: %v", value, e)
+		}
+	}
+}
+func TestNormalizeScalarFloatLexicalBoundary(t *testing.T) {
+	for _, s := range []string{"0x1p2", "1_0", "0x10", " 1", "1 ", "", "+", ".", "1e", "NaN", "Infinity"} {
+		if _, e := NormalizeScalar(Field{Type: "FLOAT64"}, s); errorCode(e) != "unsupported_value" {
+			t.Fatalf("accepted invalid decimal lexeme %q: %v", s, e)
+		}
 	}
 }

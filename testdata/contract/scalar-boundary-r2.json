@@ -1,0 +1,187 @@
+[
+  {
+    "id": "float-lexeme-reject-0",
+    "kind": "scalar",
+    "field": {
+      "type": "FLOAT64"
+    },
+    "value": "0x1p2",
+    "error": "unsupported_value"
+  },
+  {
+    "id": "float-lexeme-reject-1",
+    "kind": "scalar",
+    "field": {
+      "type": "FLOAT64"
+    },
+    "value": "1_0",
+    "error": "unsupported_value"
+  },
+  {
+    "id": "float-lexeme-reject-2",
+    "kind": "scalar",
+    "field": {
+      "type": "FLOAT64"
+    },
+    "value": "0x10",
+    "error": "unsupported_value"
+  },
+  {
+    "id": "float-lexeme-reject-3",
+    "kind": "scalar",
+    "field": {
+      "type": "FLOAT64"
+    },
+    "value": " 1",
+    "error": "unsupported_value"
+  },
+  {
+    "id": "float-lexeme-reject-4",
+    "kind": "scalar",
+    "field": {
+      "type": "FLOAT64"
+    },
+    "value": "1 ",
+    "error": "unsupported_value"
+  },
+  {
+    "id": "float-lexeme-reject-5",
+    "kind": "scalar",
+    "field": {
+      "type": "FLOAT64"
+    },
+    "value": "",
+    "error": "unsupported_value"
+  },
+  {
+    "id": "float-lexeme-reject-6",
+    "kind": "scalar",
+    "field": {
+      "type": "FLOAT64"
+    },
+    "value": "NaN",
+    "error": "unsupported_value"
+  },
+  {
+    "id": "float-lexeme-reject-7",
+    "kind": "scalar",
+    "field": {
+      "type": "FLOAT64"
+    },
+    "value": "Infinity",
+    "error": "unsupported_value"
+  },
+  {
+    "id": "float-decimal-accept-8",
+    "kind": "scalar",
+    "field": {
+      "type": "FLOAT64"
+    },
+    "value": ".5",
+    "expected": "0.5",
+    "error": ""
+  },
+  {
+    "id": "float-decimal-accept-9",
+    "kind": "scalar",
+    "field": {
+      "type": "FLOAT64"
+    },
+    "value": "1.",
+    "expected": "1",
+    "error": ""
+  },
+  {
+    "id": "float-decimal-accept-10",
+    "kind": "scalar",
+    "field": {
+      "type": "FLOAT64"
+    },
+    "value": "+1.25e+2",
+    "expected": "125",
+    "error": ""
+  },
+  {
+    "id": "float-decimal-accept-11",
+    "kind": "scalar",
+    "field": {
+      "type": "FLOAT64"
+    },
+    "value": "-2.5E-2",
+    "expected": "-0.025",
+    "error": ""
+  },
+  {
+    "id": "float-decimal-accept-12",
+    "kind": "scalar",
+    "field": {
+      "type": "FLOAT64"
+    },
+    "value": "01",
+    "expected": "1",
+    "error": ""
+  },
+  {
+    "id": "float-row-lexeme-reject-13",
+    "kind": "rows",
+    "field": {
+      "type": "FLOAT64"
+    },
+    "input": "[{\"f\":[{\"v\":\"0x1p2\"}]}]",
+    "error": "unsupported_value"
+  },
+  {
+    "id": "float-row-lexeme-reject-14",
+    "kind": "rows",
+    "field": {
+      "type": "FLOAT64"
+    },
+    "input": "[{\"f\":[{\"v\":\"1_0\"}]}]",
+    "error": "unsupported_value"
+  },
+  {
+    "id": "direct-unicode-bytes-ff",
+    "kind": "scalar-bytes",
+    "field": {
+      "type": "STRING"
+    },
+    "input_hex": "ff",
+    "error": "malformed_wire"
+  },
+  {
+    "id": "direct-unicode-bytes-eda080",
+    "kind": "scalar-bytes",
+    "field": {
+      "type": "STRING"
+    },
+    "input_hex": "eda080",
+    "error": "malformed_wire"
+  },
+  {
+    "id": "direct-unicode-bytes-f09f92",
+    "kind": "scalar-bytes",
+    "field": {
+      "type": "STRING"
+    },
+    "input_hex": "f09f92",
+    "error": "malformed_wire"
+  },
+  {
+    "id": "float-trailing-newline-reject-0",
+    "kind": "scalar",
+    "field": {
+      "type": "FLOAT64"
+    },
+    "value": "1\n",
+    "error": "unsupported_value"
+  },
+  {
+    "id": "float-trailing-newline-reject-1",
+    "kind": "scalar",
+    "field": {
+      "type": "FLOAT64"
+    },
+    "value": "1\r\n",
+    "error": "unsupported_value"
+  }
+]

@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 type Field struct {
@@ -22,6 +23,10 @@ type Cell struct {
 
 var integerText = regexp.MustCompile(`^-?(0|[1-9][0-9]*)$`)
 var decimalText = regexp.MustCompile(`^-?[0-9]+(\.[0-9]+)?$`)
+
+// Decimal FLOAT64 wire grammar is shared with JavaScript; no language-specific
+// literals, separators, whitespace or nonfinite names are accepted.
+var float64InputText = regexp.MustCompile(`^[+-]?([0-9]+(\.[0-9]*)?|\.[0-9]+)([eE][+-]?[0-9]+)?$`)
 var clockText = regexp.MustCompile(`^[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]{1,6})?$`)
 
 // NormalizeScalar preserves SQL NULL separately from JSON text "null".
@@ -51,6 +56,9 @@ func NormalizeScalar(field Field, value any) (Cell, error) {
 	}
 	s, ok := value.(string)
 	if !ok {
+		return Cell{}, fail("malformed_wire")
+	}
+	if !utf8.ValidString(s) {
 		return Cell{}, fail("malformed_wire")
 	}
 	if len(s) > 1024*1024 {
@@ -117,6 +125,9 @@ func NormalizeScalar(field Field, value any) (Cell, error) {
 		}
 		cell.Value = canonical
 	case "FLOAT64":
+		if !float64InputText.MatchString(s) {
+			return Cell{}, fail("unsupported_value")
+		}
 		f, e := strconv.ParseFloat(s, 64)
 		if e != nil || math.IsNaN(f) || math.IsInf(f, 0) {
 			return Cell{}, fail("unsupported_value")
