@@ -338,17 +338,26 @@ func TestActualTimeControlBodyRetainsPhysicalRunGate(t *testing.T) {
 
 type delayedAuthProvider struct {
 	original Provider
+	entered  chan delayedAuthRequest
+	release  <-chan struct{}
 	done     chan struct{}
 }
 
+type delayedAuthRequest struct {
+	context      context.Context
+	authorizedAt time.Time
+}
+
 func (p delayedAuthProvider) Authorize(ctx context.Context, base http.RoundTripper) (Identity, http.RoundTripper, error) {
+	authorizedAt := time.Now()
 	identity, _, e := p.original.Authorize(ctx, base)
 	return identity, rt(func(req *http.Request) (*http.Response, error) {
 		if req.Method == "POST" {
 			raw, _ := io.ReadAll(req.Body)
 			req.Body = io.NopCloser(strings.NewReader(string(raw)))
 			if strings.Contains(string(raw), `"dryRun":false`) {
-				time.Sleep(400 * time.Millisecond)
+				p.entered <- delayedAuthRequest{req.Context(), authorizedAt}
+				<-p.release // Deliberately ignore cancellation until the test releases us.
 				defer close(p.done)
 			}
 		}
@@ -356,6 +365,15 @@ func (p delayedAuthProvider) Authorize(ctx context.Context, base http.RoundTripp
 	}), e
 }
 func TestActualTimeLateAuthenticationCannotDispatch(t *testing.T) {
+	testActualTimeLateAuthenticationCannotDispatch(t, false)
+}
+
+func TestActualTimeLateAuthenticationCannotDispatchAfterCallerDelay(t *testing.T) {
+	testActualTimeLateAuthenticationCannotDispatch(t, true)
+}
+
+func testActualTimeLateAuthenticationCannotDispatch(t *testing.T, callerDelayed bool) {
+	t.Helper()
 	c, _, _, paid := dynamicClient(t, NewMemoryLedger(), "3000")
 	plan, _ := Compile(testProfile(t), testQuery())
 	p, e := c.Preview(context.Background(), plan, Execution{"job-project", Principal{"workload", "operator:fixture", "1"}, "1000", "3000"}, shortBounds())
@@ -363,15 +381,79 @@ func TestActualTimeLateAuthenticationCannotDispatch(t *testing.T) {
 		t.Fatal(e)
 	}
 	a, _ := c.Approve(p, p.ApprovalDigest)
+	entered := make(chan delayedAuthRequest, 1)
+	release := make(chan struct{})
 	done := make(chan struct{})
-	c.provider = delayedAuthProvider{c.provider, done}
-	started := time.Now()
-	run, e := c.Execute(context.Background(), a)
-	requirePrompt(t, started, e)
-	before := run.Receipt()
-	<-done
-	time.Sleep(20 * time.Millisecond)
-	if *paid != 0 || !equalJSON(before, run.Receipt()) {
+	c.provider = delayedAuthProvider{original: c.provider, entered: entered, release: release, done: done}
+	released := false
+	defer func() {
+		if !released {
+			close(release)
+		}
+	}()
+	type result struct {
+		run *Run
+		err error
+	}
+	returned := make(chan result, 1)
+	go func() { run, err := c.Execute(context.Background(), a); returned <- result{run, err} }()
+	// These are liveness guards, not a total-operation microbenchmark. The request
+	// itself must carry the configured 60 ms deadline and return while middleware
+	// remains blocked, regardless of scheduling time spent on earlier operations.
+	timeout := time.NewTimer(3 * time.Second)
+	defer timeout.Stop()
+	if callerDelayed {
+		// Guarantee both events are buffered, modelling a caller descheduled until
+		// after the 60 ms HTTP deadline. Their simultaneous readiness must not
+		// turn the legitimate timeout into an early-return test failure.
+		select {
+		case event := <-entered:
+			entered <- event
+		case <-timeout.C:
+			t.Fatal("late authentication was not reached")
+		}
+		select {
+		case event := <-returned:
+			returned <- event
+		case <-timeout.C:
+			t.Fatal("execution waited for blocked authentication")
+		}
+	}
+	var request delayedAuthRequest
+	select {
+	case request = <-entered:
+	case <-timeout.C:
+		t.Fatal("late authentication was not reached")
+	}
+	deadline, ok := request.context.Deadline()
+	if !ok || deadline.After(request.authorizedAt.Add(time.Duration(p.Bounds.HTTPMs)*time.Millisecond)) {
+		t.Fatal("authentication request lacks configured HTTP deadline")
+	}
+	var r result
+	select {
+	case r = <-returned:
+	case <-timeout.C:
+		t.Fatal("execution waited for blocked authentication")
+	}
+	if r.run == nil || codeOf(r.err) != "local_stopped" || request.context.Err() != context.DeadlineExceeded {
+		t.Fatal("execution did not stop at authentication deadline", r.err, request.context.Err())
+	}
+	select {
+	case <-done:
+		t.Fatal("authentication completed before release")
+	default:
+	}
+	before := r.run.Receipt()
+	// Release only after caller completion. Waiting for the worker removes the
+	// old sleep-based assumption about when a late dispatch/state write finishes.
+	close(release)
+	released = true
+	select {
+	case <-done:
+	case <-timeout.C:
+		t.Fatal("late authentication did not finish after release")
+	}
+	if *paid != 0 || !equalJSON(before, r.run.Receipt()) {
 		t.Fatal("late middleware submitted or wrote state")
 	}
 }

@@ -1,0 +1,7 @@
+{
+  "datasetReference": {"projectId": "fixture-project", "datasetId": "fixture_dataset"},
+  "location": "EU",
+  "description": "PRIVATE free text must never be copied",
+  "access": [{"userByEmail": "private-principal@example.invalid"}],
+  "etag": "PRIVATE opaque dataset etag"
+}
