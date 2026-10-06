@@ -57,12 +57,49 @@ operations; read permission is required, cancellation permission is not.
 The existing `Observe(ctx, profile)` API retains its caller-supplied profile and
 default bounds behavior.
 
-This is validation of an already reviewed profile, not initial dataset discovery.
-The inactive World Bank WDI catalogue candidate has no verified current table
-locator, location or native schema here; inventing a `SourceProfile` to inspect it
-is not supported. Initial discovery needs a separately reviewed metadata contract
-that can represent unverified location/schema without accepting an execution
-profile. No WDI profile, source admission or live access proof is included.
+`NewDiscoveryClient(DiscoveryConfig)` provides separate initial metadata
+discovery without an execution profile. It freezes at most 16 protected exact
+source/project/dataset/table locators; `Discover(ctx, sourceID, bounds)` accepts
+only a configured source ID. Its required `DiscoveryAuthorize` bridge reads the
+current owner/consent/source/session binding and private policy revision before
+each dispatch and delivery, including another policy check after provider identity
+callbacks return. The trusted `Provider` attests the matching principal,
+expiry and read capability. Neither a bearer token nor request JSON attests this
+state. A discovery-only physical transport wrapper repeats identity and policy
+attestation inside the admitted transport worker immediately before invoking the
+trusted transport, including consent changes while that worker was queued.
+The client holds no query preparer or ledger and exposes no job/row API.
+
+Discovery explicitly requests `datasets.get?datasetView=METADATA`, excluding the
+default ACL view, then `tables.get?view=STORAGE_STATS`, pinning the existing audited
+metadata view rather than the future-expanding FULL view. Storage statistics may
+arrive transiently but are discarded; no rows or table data are requested. Exact
+references and observed location must agree. The public projection is deliberately
+partial and can describe TABLE, VIEW, EXTERNAL, MATERIALIZED_VIEW or SNAPSHOT
+without making any of them executable. Unsupported flexible identifiers fail
+closed. Source IDs match the registry's segmented lowercase alphanumeric syntax
+and 80-character ceiling. There is no table listing or inferred table selection; WDI still needs an
+independently documented exact candidate table before this API can inspect it.
+
+The output follows `ovdb-bigquery-observation/draft-1`: exact source refs,
+location/object type, UTC observation time at second precision, recursive schema
+(`name`, native `type`, explicit `mode`, nested `fields`), fixed partial-projection
+marker, credential-free provenance and canonical SHA-256. Depth is at most 8,
+schema fields total at most 500 and the complete envelope at most 64 KiB.
+Descriptions, etags, ACL/security/governance objects, default/generated expressions,
+optional type descriptors, counts, actor/consent IDs, credentials, job project and
+raw bodies are excluded recursively. Unknown properties are omitted; the output
+is not a complete native schema or an admission-ready profile. The SHA-256 covers
+canonical JSON of the entire public envelope with only `sha256` omitted, including
+observation time and provenance; it differs from executable Observation digests.
+Consumers must retain inactive/blocked query, cost, rights and retention gates.
+Review and import the public envelope separately; never persist raw responses or
+the private operator binding.
+
+The [offline CLI harness](examples/metadata-discovery/README.md) demonstrates the
+production discovery path with hostile nested metadata fixtures. Its default live
+mode requires an injected operator factory and refuses when unconfigured. No WDI
+profile, source admission or real metadata access proof is included.
 
 Metadata observation grants no query authority. Execution still requires an
 explicit job project, verified execution principal, current policy preparation,
