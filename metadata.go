@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Discovery classifications are pinned to google.golang.org/api v0.296.0.
@@ -370,6 +371,26 @@ func validateTable(raw any, p SourceProfile) (Observation, error) {
 	return obs, e
 }
 func asString(v any) string { s, _ := v.(string); return s }
+
+// ObserveConfigured validates metadata for a profile frozen by NewClient, selected
+// by its SourceDigest (also exposed by Compile). Bounds apply to the entire
+// inspection and both metadata responses. It uses authenticated datasets.get and
+// tables.get only: no query preparation, dry run, job, rows, or ledger access.
+// A successful observation does not approve execution or admit a public source.
+func (c *Client) ObserveConfigured(ctx context.Context, sourceDigest string, bounds Bounds) (Observation, error) {
+	if e := bounds.validate(); e != nil {
+		return Observation{}, e
+	}
+	p, ok := c.profiles[sourceDigest]
+	if !ok {
+		return Observation{}, fail("invalid_input")
+	}
+	scope := newPreviewScope(bounds, c.clock.Now())
+	ctx, cancel := boundedContext(ctx, time.Duration(bounds.WallMs)*time.Millisecond)
+	defer cancel()
+	return c.observe(ctx, p, scope, nil)
+}
+
 func (c *Client) Observe(ctx context.Context, p SourceProfile) (Observation, error) {
 	if _, e := sourceDigest(p); e != nil {
 		return Observation{}, e
