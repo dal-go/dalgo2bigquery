@@ -41,6 +41,37 @@ This shows API shape; applications must handle each error before the next call. 
 
 `Client.Snapshot(ctx, priorReceipt)` returns `SnapshotResult{Receipt, Cursor}` from the trusted local ledger under the existing run lease. It validates immutable receipt authority and returns current billing, state and cumulative counters with defensive copies. The opaque cursor remains the exact previously issued delivery binding, or an empty string if none exists; control byte debits are reflected in the receipt without minting a new cursor. Snapshot performs no provider/policy preparation, HTTP, row reads or state changes. It remains available after execution expiry, without granting permission to resume expired results. Preserve each control operation's separate status/cancel result, including partial-error outcomes, alongside this receipt snapshot. Consumers should share the original bounded control context across control and Snapshot. A busy run lease refuses immediately; the local operation observes earlier caller cancellation or a 15-second ceiling and retains the documented filesystem limitations. There is no new HTTP route.
 
+## Metadata inspection
+
+`Client.ObserveConfigured(ctx, plan.SourceDigest, bounds)` selects only a reviewed
+profile frozen in `NewClient` and validates its dataset location, native table
+configuration and schema using authenticated
+[datasets.get](https://docs.cloud.google.com/bigquery/docs/reference/rest/v2/datasets/get)
+and [tables.get](https://docs.cloud.google.com/bigquery/docs/reference/rest/v2/tables/get).
+Google documents `tables.get` as table structure metadata without table data.
+Explicit `Bounds` limit per-response and cumulative bytes, per-HTTP time and total
+wall time. Unknown profiles and invalid bounds fail before dispatch. The method
+does not invoke `Prepare`, perform a dry run, create a job, read rows or access the
+query ledger. It uses the same trusted `Provider` and transport guards as query
+operations; read permission is required, cancellation permission is not.
+The existing `Observe(ctx, profile)` API retains its caller-supplied profile and
+default bounds behavior.
+
+This is validation of an already reviewed profile, not initial dataset discovery.
+The inactive World Bank WDI catalogue candidate has no verified current table
+locator, location or native schema here; inventing a `SourceProfile` to inspect it
+is not supported. Initial discovery needs a separately reviewed metadata contract
+that can represent unverified location/schema without accepting an execution
+profile. No WDI profile, source admission or live access proof is included.
+
+Metadata observation grants no query authority. Execution still requires an
+explicit job project, verified execution principal, current policy preparation,
+dry-run estimate, positive byte cap/session budget and exact approval. Source
+rights and provider-result retention authorization remain separate operator gates:
+[BigQuery materializes query results](https://docs.cloud.google.com/bigquery/docs/cached-results)
+in destination or temporary tables, and disabling cache retrieval does not prevent
+that storage. Go metadata tests do not establish browser OAuth or CORS readiness.
+
 ## Local server harness
 
 `examples/server.NewHandler(Config)` provides `/preview`, `/execute`, `/page`, `/rebind`, `/status` and `/cancel` with the injected operator client, fixed query/cost principal and explicit trusted browser origin. Closed bounded JSON requests cannot choose credentials, SQL or cost identity. The server rejects non-loopback clients and unknown origins. The runnable [operator composition scaffold](examples/operator-server/README.md) constructs the client, private ledger, handler and signal-owned server from a build-time injected trusted operator factory. Unconfigured invocation refuses before ledger creation or a listener; the factory must honor its bounded setup context. An operator application can also call `server.Serve(ctx, "127.0.0.1:YOUR_PORT", handler)` after establishing its trusted provider and private ledger; the context owns shutdown. No import or test starts a listener. The production handler tests use `httptest.NewRecorder` and an injected SDK transport for metadata → dry run → approved execution → two same-job pages → status.
