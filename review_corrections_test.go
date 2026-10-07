@@ -109,7 +109,9 @@ func TestActualTimePreparationBoundsAndNoLateSubmission(t *testing.T) {
 			t.Run(phase+map[bool]string{true: "-cooperative", false: "-ignores"}[cooperative], func(t *testing.T) {
 				c, _, _, paid := dynamicClient(t, NewMemoryLedger(), "3000")
 				plan, _ := Compile(testProfile(t), testQuery())
-				b := shortBounds()
+				// Setup is not the operation under test: scheduling its metadata and
+				// first row must not consume the injected dependency's short budget.
+				b := DefaultBounds()
 				exec := Execution{"job-project", Principal{"workload", "operator:fixture", "1"}, "1000", "3000"}
 				var p Preview
 				var run *Run
@@ -136,22 +138,24 @@ func TestActualTimePreparationBoundsAndNoLateSubmission(t *testing.T) {
 				}
 				done := make(chan struct{}, 1)
 				c.prepare = slowPrepare(c.prepare, cooperative, done)
+				ctx, cancel := context.WithTimeout(context.Background(), time.Duration(shortBounds().HTTPMs)*time.Millisecond)
+				defer cancel()
 				started := time.Now()
 				var e error
 				switch phase {
 				case "preview":
-					_, e = c.Preview(context.Background(), plan, exec, b)
+					_, e = c.Preview(ctx, plan, exec, b)
 				case "execute":
 					a, _ := c.Approve(p, p.ApprovalDigest)
-					run, e = c.Execute(context.Background(), a)
+					run, e = c.Execute(ctx, a)
 				case "resume":
-					_, e = c.Resume(context.Background(), run.Receipt(), cursor)
+					_, e = c.Resume(ctx, run.Receipt(), cursor)
 				case "status":
-					_, e = c.Status(context.Background(), *run.Receipt().Job)
+					_, e = c.Status(ctx, *run.Receipt().Job)
 				case "cancel":
-					_, e = c.CancelJob(context.Background(), *run.Receipt().Job)
+					_, e = c.CancelJob(ctx, *run.Receipt().Job)
 				case "rebind":
-					_, e = c.RebindJob(context.Background(), run.Receipt(), cursor)
+					_, e = c.RebindJob(ctx, run.Receipt(), cursor)
 				}
 				requirePrompt(t, started, e)
 				before := Receipt{}
@@ -174,6 +178,30 @@ func TestActualTimePreparationBoundsAndNoLateSubmission(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func TestActualTimeConfiguredPreparationBoundsAndNoPaidDispatch(t *testing.T) {
+	for _, cooperative := range []bool{true, false} {
+		t.Run(map[bool]string{true: "cooperative", false: "ignores"}[cooperative], func(t *testing.T) {
+			c, _, _, paid := dynamicClient(t, NewMemoryLedger(), "3000")
+			plan, _ := Compile(testProfile(t), testQuery())
+			done := make(chan struct{}, 1)
+			c.prepare = slowPrepare(c.prepare, cooperative, done)
+			// Preview reaches Prepare without prior fixture operations. A background
+			// caller lets only the configured HTTPMs bound stop this dependency;
+			// the caller-bound matrix above cannot detect an ignored HTTPMs limit.
+			started := time.Now()
+			_, e := c.Preview(context.Background(), plan, Execution{"job-project", Principal{"workload", "operator:fixture", "1"}, "1000", "3000"}, shortBounds())
+			requirePrompt(t, started, e)
+			if !cooperative {
+				<-done
+			}
+			time.Sleep(10 * time.Millisecond)
+			if *paid != 0 {
+				t.Fatal("late paid dispatch", *paid)
+			}
+		})
 	}
 }
 
@@ -400,12 +428,24 @@ func TestActualTimeLateAuthenticationCannotDispatchAfterCallerDelay(t *testing.T
 func testActualTimeLateAuthenticationCannotDispatch(t *testing.T, callerDelayed bool) {
 	t.Helper()
 	c, _, _, paid := dynamicClient(t, NewMemoryLedger(), "3000")
-	plan, _ := Compile(testProfile(t), testQuery())
-	p, e := c.Preview(context.Background(), plan, Execution{"job-project", Principal{"workload", "operator:fixture", "1"}, "1000", "3000"}, shortBounds())
+	// Exercise the paid call's authentication deadline independently of Execute's
+	// preparation, metadata, estimate and initial-result setup operations.
+	run, e := approvedRun(t, c, DefaultBounds())
 	if e != nil {
 		t.Fatal(e)
 	}
-	a, _ := c.Approve(p, p.ApprovalDigest)
+	rr, e := c.loadRun(run.id)
+	if e != nil {
+		t.Fatal(e)
+	}
+	scope := runScope(rr)
+	scope.bounds = shortBounds()
+	scope.submit, scope.result = true, true
+	req, e := queryRequest(rr.Preview.Plan, rr.Preview.Execution, scope.bounds, rr.Preview.Observation.Location, false)
+	if e != nil {
+		t.Fatal(e)
+	}
+	paidBefore := *paid
 	entered := make(chan delayedAuthRequest, 1)
 	release := make(chan struct{})
 	done := make(chan struct{})
@@ -421,7 +461,13 @@ func testActualTimeLateAuthenticationCannotDispatch(t *testing.T, callerDelayed 
 		err error
 	}
 	returned := make(chan result, 1)
-	go func() { run, err := c.Execute(context.Background(), a); returned <- result{run, err} }()
+	go func() {
+		_, err := c.call(context.Background(), scope, &rr.ActivePrincipal, false, func(api sdkAPI) error {
+			_, err := api.service.Jobs.Query(rr.Preview.Execution.JobProject, req).Context(api.ctx).Do()
+			return err
+		})
+		returned <- result{run, err}
+	}()
 	// These are liveness guards, not a total-operation microbenchmark. The request
 	// itself must carry the configured 60 ms deadline and return while middleware
 	// remains blocked, regardless of scheduling time spent on earlier operations.
@@ -451,7 +497,7 @@ func testActualTimeLateAuthenticationCannotDispatch(t *testing.T, callerDelayed 
 		t.Fatal("late authentication was not reached")
 	}
 	deadline, ok := request.context.Deadline()
-	if !ok || deadline.After(request.authorizedAt.Add(time.Duration(p.Bounds.HTTPMs)*time.Millisecond)) {
+	if !ok || deadline.After(request.authorizedAt.Add(time.Duration(scope.bounds.HTTPMs)*time.Millisecond)) {
 		t.Fatal("authentication request lacks configured HTTP deadline")
 	}
 	var r result
@@ -478,7 +524,7 @@ func testActualTimeLateAuthenticationCannotDispatch(t *testing.T, callerDelayed 
 	case <-timeout.C:
 		t.Fatal("late authentication did not finish after release")
 	}
-	if *paid != 0 || !equalJSON(before, r.run.Receipt()) {
+	if *paid != paidBefore || !equalJSON(before, r.run.Receipt()) {
 		t.Fatal("late middleware submitted or wrote state")
 	}
 }
