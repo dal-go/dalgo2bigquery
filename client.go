@@ -293,14 +293,14 @@ func queryRequest(plan ReadPlan, execution Execution, bounds Bounds, location st
 			}
 			value.ForceSendFields = []string{"ArrayValues"}
 			for _, v := range a {
-				scalar, e := sdkParameterValue(v)
+				scalar, e := sdkParameterValue(typ.ArrayType.Type, v)
 				if e != nil {
 					return nil, e
 				}
 				value.ArrayValues = append(value.ArrayValues, scalar)
 			}
 		} else {
-			value, e = sdkParameterValue(p.Value)
+			value, e = sdkParameterValue(p.Type, p.Value)
 			if e != nil {
 				return nil, e
 			}
@@ -309,7 +309,7 @@ func queryRequest(plan ReadPlan, execution Execution, bounds Bounds, location st
 	}
 	return request, nil
 }
-func sdkParameterValue(v any) (*bq.QueryParameterValue, error) {
+func sdkParameterValue(typ string, v any) (*bq.QueryParameterValue, error) {
 	if v == nil {
 		return &bq.QueryParameterValue{NullFields: []string{"Value"}}, nil
 	}
@@ -320,6 +320,18 @@ func sdkParameterValue(v any) (*bq.QueryParameterValue, error) {
 		} else {
 			return nil, fail("invalid_input")
 		}
+	}
+	if typ == "TIMESTAMP" {
+		// Plans retain exact epoch microseconds; only REST parameters use UTC text.
+		cell, e := NormalizeScalar(Field{Type: "TIMESTAMP"}, s)
+		if e != nil {
+			return nil, e
+		}
+		micros, e := strconv.ParseInt(cell.Value.(string), 10, 64)
+		if e != nil {
+			return nil, fail("unsupported_value")
+		}
+		s = time.UnixMicro(micros).UTC().Format("2006-01-02 15:04:05.000000 UTC")
 	}
 	return &bq.QueryParameterValue{Value: s, ForceSendFields: []string{"Value"}}, nil
 }
