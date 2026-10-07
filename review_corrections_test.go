@@ -250,14 +250,36 @@ func TestLedgerReservationWaitHonorsOriginalDeadline(t *testing.T) {
 		t.Fatal(e)
 	}
 	c, _, _, paid := dynamicClient(t, l, "3000")
+	// Deliberately exceed the execution allowance during setup so this test
+	// cannot regress to sharing that allowance with Preview.
+	originalPrepare := c.prepare
+	c.prepare = slowPrepare(originalPrepare, true, nil)
 	plan, _ := Compile(testProfile(t), testQuery())
 	b := shortBounds()
 	b.WallMs = 100
-	p, e := c.Preview(context.Background(), plan, Execution{"job-project", Principal{"workload", "operator:fixture", "1"}, "1000", "3000"}, b)
+	// Preparation, fixture HTTP and private-file persistence are setup, not the
+	// contested reservation wait. Give setup its normal bound, then reseal the
+	// trusted fixture with the original 100 ms execution bound before approving.
+	p, e := c.Preview(context.Background(), plan, Execution{"job-project", Principal{"workload", "operator:fixture", "1"}, "1000", "3000"}, DefaultBounds())
 	if e != nil {
 		t.Fatal(e)
 	}
-	a, _ := c.Approve(p, p.ApprovalDigest)
+	p.Bounds = b
+	p.ApprovalDigest, e = approvalDigest(p)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if e = l.update(func(s *ledgerState) error {
+		s.Previews[p.Nonce] = previewRecord{Preview: p}
+		return nil
+	}); e != nil {
+		t.Fatal(e)
+	}
+	c.prepare = originalPrepare
+	a, e := c.Approve(p, p.ApprovalDigest)
+	if e != nil {
+		t.Fatal(e)
+	}
 	lock, e := l.lock("session.lock")
 	if e != nil {
 		t.Fatal(e)
@@ -269,6 +291,9 @@ func TestLedgerReservationWaitHonorsOriginalDeadline(t *testing.T) {
 	defer ledgerUnlock(lock)
 	started := time.Now()
 	_, e = c.Execute(context.Background(), a)
+	if errorCode(e) != "local_stopped" {
+		t.Fatal("reservation wait did not stop at its deadline", e)
+	}
 	requirePrompt(t, started, e)
 	if *paid != 0 {
 		t.Fatal("dispatch after budget-lock timeout")
