@@ -33,6 +33,34 @@ status, err := client.Status(ctx, *page.Receipt.Job)
 cancel, err := client.CancelJob(ctx, *page.Receipt.Job)
 ```
 
+## Explicit destination loads
+
+`NewLoadWriter` is a separate, narrow API for applications that own a BigQuery
+destination. The caller chooses the project, dataset, location, and authenticated
+HTTP client; the package does not discover credentials. The exported
+`BigqueryScope` names the write scope the caller must arrange locally. The
+writer creates a missing dataset only at the requested location, refuses
+existing destination tables, and records a private ownership label, schema and
+ETag for each table it creates. `SetConstraints` and `LoadTable` refuse tables
+that this writer did not create or whose ownership, schema or ETag changed.
+Constraint patches send the tracked ETag as `If-Match`, so a stale metadata
+update is rejected by BigQuery. The load-job API has no destination-table ETag
+precondition: an external principal can replace a table between the writer's
+final ownership check and load dispatch. A load receipt verifies the identified
+job and its destination, but cannot fence that external concurrent-writer race.
+The authenticated transport checks every dispatched API, resumable-upload and
+status request against the fixed HTTPS Google API origins before credentials are
+added, including SDK-generated chunk requests. It submits explicit-schema NDJSON load jobs with
+`CREATE_NEVER`, `WRITE_EMPTY`, zero bad records, and no ignored unknown fields.
+An ambiguous submission returns `*LoadOutcomeUnknownError` with a durable,
+credential-free `LoadJobRef`. Persist that reference and call `RecoverLoad` with
+a fresh context to poll the same job; it never resubmits source rows. Completed
+receipts require the same job's project, ID, location, destination and load
+statistics, so a missing row count is an unknown outcome rather than zero.
+Loads are atomic per table; a caller copying multiple tables must account for
+partial progress across separate jobs. Any primary and foreign keys are
+BigQuery metadata only: BigQuery does not enforce them.
+
 This shows API shape; applications must handle each error before the next call. `Executor` bridges one approved effective plan to DALgo recordsets and rejects keyed records or a changed query. HTTP errors contain only sanitized codes/reasons. The generated SDK runs with a discard logger; validated raw response bodies drive cell/state decoding. Fixed Google origin, redirect refusal, decompressed body limits, duplicate-key/Unicode validation and a lower dispatch gate apply beneath authentication middleware. POST replay is never permitted; GET retries share a three-attempt limit and debit actual response/page counters.
 
 `Run.Close` stops local delivery and preserves the known running job and reservation. A cursor is an opaque, ledger-checked continuation of the original query, job, schema, page, offset, principal generation and cumulative counters. Resume retains the original absolute execution deadline. Expired result work stops before new dispatch or body I/O; explicit status/cancel retain a bounded control opportunity and the same response budget. A cancellation request alone is not confirmed cancellation; an ambiguous `stopped` reason remains a failure. Known jobs stay recoverable after later timeout or malformed rows; lost or late unvalidated initial submissions retain `submission_unknown` and full cap.
