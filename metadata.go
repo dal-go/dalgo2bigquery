@@ -15,7 +15,7 @@ var tableMetadata = strings.Fields("creationTime description etag expirationTime
 var tableSupported = strings.Fields("tableReference location type schema timePartitioning rangePartitioning clustering requirePartitionFilter")
 var tableRejected = strings.Fields("biglakeConfiguration cloneDefinition defaultCollation defaultRoundingMode encryptionConfiguration externalCatalogTableOptions externalDataConfiguration managedTableType materializedView materializedViewStatus maxStaleness model partitionDefinition replicas restrictions snapshotDefinition tableConstraints tableReplicationInfo view")
 var datasetMetadata = strings.Fields("access creationTime defaultPartitionExpirationMs defaultTableExpirationMs description etag friendlyName id kind labels lastModifiedTime maxTimeTravelHours resourceTags satisfiesPzi satisfiesPzs selfLink storageBillingModel tags")
-var datasetRejected = strings.Fields("catalogSource defaultCollation defaultEncryptionConfiguration defaultRoundingMode externalCatalogDatasetOptions externalDatasetReference isCaseInsensitive linkedDatasetMetadata linkedDatasetSource restrictions type")
+var datasetRejected = strings.Fields("catalogSource defaultCollation defaultEncryptionConfiguration defaultRoundingMode externalCatalogDatasetOptions externalDatasetReference isCaseInsensitive linkedDatasetMetadata linkedDatasetSource restrictions")
 
 func object(v any) (map[string]any, error) {
 	m, ok := v.(map[string]any)
@@ -210,11 +210,16 @@ func validateDataset(raw any, p SourceProfile) error {
 	if e != nil {
 		return e
 	}
-	if e = known(m, datasetMetadata, datasetRejected, []string{"datasetReference", "location"}); e != nil {
+	if e = known(m, datasetMetadata, datasetRejected, []string{"datasetReference", "location", "type"}); e != nil {
 		return e
 	}
 	if e = absentConfigs(m, datasetRejected); e != nil {
 		return e
+	}
+	// BigQuery labels native datasets DEFAULT or PUBLIC. Other kinds have
+	// different storage/access semantics and cannot back this native profile.
+	if kind, present := m["type"]; present && kind != "DEFAULT" && kind != "PUBLIC" {
+		return fail("source_ineligible")
 	}
 	ref, e := object(m["datasetReference"])
 	if e != nil {
