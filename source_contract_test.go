@@ -322,3 +322,161 @@ func TestReadOnlySourceCancellationAndLimits(t *testing.T) {
 		t.Fatal("max rows silently truncated")
 	}
 }
+
+func TestReadOnlySourceCumulativeCursorBounds(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		limit     func(*SourceLimits)
+		firstGood bool
+		longRow   bool
+	}{
+		{"page-limit", func(l *SourceLimits) { l.MaxPages = 1 }, true, false},
+		{"byte-limit", func(l *SourceLimits) { l.MaxBytes = 1 }, false, false},
+		{"response-limit", func(l *SourceLimits) { l.ResponseBytes = 1024 }, false, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			pageCalls := 0
+			db := sourceTestDatabase(t, rt(func(req *http.Request) (*http.Response, error) {
+				switch {
+				case strings.HasSuffix(req.URL.Path, "/fixture_dataset"):
+					return response(sourceTestJSON(map[string]any{"datasetReference": map[string]any{"projectId": "fixture-project", "datasetId": "fixture_dataset"}})), nil
+				case strings.HasSuffix(req.URL.Path, "/tables/sample"):
+					return response(sourceTestTable([]any{map[string]any{"name": "id", "type": "INT64", "mode": "REQUIRED"}, map[string]any{"name": "title", "type": "STRING"}}, "2", "e1")), nil
+				case strings.HasSuffix(req.URL.Path, "/tables/sample/data"):
+					pageCalls++
+					if pageCalls == 1 {
+						title := "short"
+						if tc.longRow {
+							title = strings.Repeat("x", 2000)
+						}
+						return response(sourceTestJSON(map[string]any{"kind": "bigquery#tableDataList", "totalRows": "2", "pageToken": "next", "rows": []any{sourceTestRow("1", title)}})), nil
+					}
+					return response(sourceTestJSON(map[string]any{"kind": "bigquery#tableDataList", "totalRows": "2", "rows": []any{sourceTestRow("2", "second")}})), nil
+				}
+				t.Fatalf("unexpected request %s", req.URL)
+				return nil, nil
+			}))
+			tc.limit(&db.source.limits)
+			ref := dal.NewRootCollectionRef("sample", "")
+			cursor, e := db.OpenSourceRows(context.Background(), &ref)
+			if e != nil {
+				t.Fatal(e)
+			}
+			defer cursor.Close()
+			if tc.firstGood {
+				if _, e := cursor.Next(); e != nil {
+					t.Fatalf("first row: %v", e)
+				}
+			}
+			_, terminal := cursor.Next()
+			if terminal == nil || errors.Is(terminal, io.EOF) {
+				t.Fatalf("bound returned clean EOF: %v", terminal)
+			}
+			_, repeated := cursor.Next()
+			if repeated == nil || repeated.Error() != terminal.Error() {
+				t.Fatalf("terminal error lost: %v then %v", terminal, repeated)
+			}
+			if pageCalls != 1 {
+				t.Fatalf("page limit bypassed: %d calls", pageCalls)
+			}
+		})
+	}
+}
+
+func TestReadOnlySourceCursorStopsAfterCloseCancellationOrIdentityChange(t *testing.T) {
+	for _, mode := range []string{"close", "cancel", "principal", "expiry"} {
+		t.Run(mode, func(t *testing.T) {
+			pageCalls := 0
+			db := sourceTestDatabase(t, rt(func(req *http.Request) (*http.Response, error) {
+				switch {
+				case strings.HasSuffix(req.URL.Path, "/fixture_dataset"):
+					return response(sourceTestJSON(map[string]any{"datasetReference": map[string]any{"projectId": "fixture-project", "datasetId": "fixture_dataset"}})), nil
+				case strings.HasSuffix(req.URL.Path, "/tables/sample"):
+					return response(sourceTestTable([]any{map[string]any{"name": "id", "type": "INT64", "mode": "REQUIRED"}}, "3", "e1")), nil
+				case strings.HasSuffix(req.URL.Path, "/tables/sample/data"):
+					pageCalls++
+					return response(sourceTestJSON(map[string]any{"kind": "bigquery#tableDataList", "totalRows": "3", "pageToken": "next", "rows": []any{sourceTestRow("1"), sourceTestRow("2")}})), nil
+				}
+				t.Fatalf("unexpected request %s", req.URL)
+				return nil, nil
+			}))
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			ref := dal.NewRootCollectionRef("sample", "")
+			cursor, e := db.OpenSourceRows(ctx, &ref)
+			if e != nil {
+				t.Fatal(e)
+			}
+			defer cursor.Close()
+			if _, e := cursor.Next(); e != nil {
+				t.Fatalf("first row: %v", e)
+			}
+			switch mode {
+			case "close":
+				if e := cursor.Close(); e != nil {
+					t.Fatal(e)
+				}
+			case "cancel":
+				cancel()
+			case "principal":
+				p := db.source.provider.(*testProvider)
+				p.identity.Principal.Generation = "2"
+			case "expiry":
+				p := db.source.provider.(*testProvider)
+				p.identity.ExpiresAt = db.source.clock.Now().Add(-time.Second)
+			}
+			_, terminal := cursor.Next()
+			if mode == "close" {
+				if !errors.Is(terminal, io.EOF) {
+					t.Fatalf("closed cursor: %v", terminal)
+				}
+			} else {
+				if terminal == nil || errors.Is(terminal, io.EOF) {
+					t.Fatalf("revoked cursor returned clean EOF: %v", terminal)
+				}
+				_, repeated := cursor.Next()
+				if repeated == nil || repeated.Error() != terminal.Error() {
+					t.Fatalf("terminal error lost: %v then %v", terminal, repeated)
+				}
+			}
+			if pageCalls != 1 {
+				t.Fatalf("new dispatch after %s: %d", mode, pageCalls)
+			}
+		})
+	}
+}
+
+func TestReadOnlySourceEmptyInventoryAndTable(t *testing.T) {
+	dataCalls := 0
+	db := sourceTestDatabase(t, rt(func(req *http.Request) (*http.Response, error) {
+		switch {
+		case strings.HasSuffix(req.URL.Path, "/fixture_dataset"):
+			return response(sourceTestJSON(map[string]any{"datasetReference": map[string]any{"projectId": "fixture-project", "datasetId": "fixture_dataset"}})), nil
+		case strings.HasSuffix(req.URL.Path, "/tables"):
+			return response(`{"totalItems":0}`), nil
+		case strings.HasSuffix(req.URL.Path, "/tables/sample"):
+			return response(sourceTestTable([]any{map[string]any{"name": "id", "type": "INT64", "mode": "REQUIRED"}}, "0", "e1")), nil
+		case strings.HasSuffix(req.URL.Path, "/tables/sample/data"):
+			dataCalls++
+			return response(`{"kind":"bigquery#tableDataList","totalRows":"0"}`), nil
+		}
+		t.Fatalf("unexpected request %s", req.URL)
+		return nil, nil
+	}))
+	refs, e := dbschema.ListCollections(context.Background(), db, nil)
+	if e != nil || len(refs) != 0 {
+		t.Fatalf("empty inventory: %v %v", refs, e)
+	}
+	ref := dal.NewRootCollectionRef("sample", "")
+	cursor, e := db.OpenSourceRows(context.Background(), &ref)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer cursor.Close()
+	if _, e := cursor.Next(); !errors.Is(e, io.EOF) {
+		t.Fatalf("empty table: %v", e)
+	}
+	if dataCalls != 1 {
+		t.Fatalf("empty table data calls: %d", dataCalls)
+	}
+}

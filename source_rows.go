@@ -107,6 +107,11 @@ func (c *sourceRowCursor) Next() (dbschema.SourceRow, error) {
 			return dbschema.SourceRow{}, c.fail(e)
 		}
 	}
+	// Authorization is a delivery gate too. A principal can change while rows
+	// from an earlier authorized HTTP page are buffered locally.
+	if e := c.db.client().checkIdentity(c.ctx, c.principal); e != nil {
+		return dbschema.SourceRow{}, c.fail(e)
+	}
 	row := c.rows[c.index]
 	c.index++
 	c.count++
