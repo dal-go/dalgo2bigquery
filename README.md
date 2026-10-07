@@ -40,14 +40,21 @@ destination. The caller chooses the project, dataset, location, and authenticate
 HTTP client; the package does not discover credentials. The exported
 `BigqueryScope` names the write scope the caller must arrange locally. The
 writer creates a missing dataset only at the requested location, refuses
-existing destination tables, and submits explicit-schema NDJSON load jobs with
+existing destination tables, and records a private ownership label, schema and
+ETag for each table it creates. `SetConstraints` and `LoadTable` refuse tables
+that this writer did not create or whose ownership, schema or ETag changed.
+The authenticated transport checks every dispatched API, resumable-upload and
+status request against the fixed HTTPS Google API origins before credentials are
+added, including SDK-generated chunk requests. It submits explicit-schema NDJSON load jobs with
 `CREATE_NEVER`, `WRITE_EMPTY`, zero bad records, and no ignored unknown fields.
-It reconciles an ambiguous submission by reading the same generated job ID and
-validates the completed job's project, ID, location, and destination before
-returning a row-count receipt. Loads are atomic per table; a caller copying
-multiple tables must account for partial progress across separate jobs. Any
-primary and foreign keys are BigQuery metadata only: BigQuery does not enforce
-them.
+An ambiguous submission returns `*LoadOutcomeUnknownError` with a durable,
+credential-free `LoadJobRef`. Persist that reference and call `RecoverLoad` with
+a fresh context to poll the same job; it never resubmits source rows. Completed
+receipts require the same job's project, ID, location, destination and load
+statistics, so a missing row count is an unknown outcome rather than zero.
+Loads are atomic per table; a caller copying multiple tables must account for
+partial progress across separate jobs. Any primary and foreign keys are
+BigQuery metadata only: BigQuery does not enforce them.
 
 This shows API shape; applications must handle each error before the next call. `Executor` bridges one approved effective plan to DALgo recordsets and rejects keyed records or a changed query. HTTP errors contain only sanitized codes/reasons. The generated SDK runs with a discard logger; validated raw response bodies drive cell/state decoding. Fixed Google origin, redirect refusal, decompressed body limits, duplicate-key/Unicode validation and a lower dispatch gate apply beneath authentication middleware. POST replay is never permitted; GET retries share a three-attempt limit and debit actual response/page counters.
 

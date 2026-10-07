@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	bq "google.golang.org/api/bigquery/v2"
@@ -19,7 +21,10 @@ import (
 var (
 	ErrDatasetLocationMismatch = errors.New("BigQuery dataset location does not match the requested location")
 	ErrTableExists             = errors.New("BigQuery destination table already exists")
-	ErrLoadOutcomeUnknown      = errors.New("BigQuery load outcome is unknown; inspect the job before retrying")
+	ErrTableNotOwned           = errors.New("BigQuery table was not created by this load writer")
+	ErrTableBusy               = errors.New("BigQuery table already has a load or metadata update in progress")
+	ErrTableOwnershipChanged   = errors.New("BigQuery table ownership or schema changed")
+	ErrLoadOutcomeUnknown      = errors.New("BigQuery load outcome is unknown")
 )
 
 // BigqueryScope is the OAuth scope required for dataset and load-job writes.
@@ -27,6 +32,7 @@ var (
 const BigqueryScope = "https://www.googleapis.com/auth/bigquery"
 
 var loadIdentifier = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+var loadJobIDPattern = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
 
 func validLoadIdentifier(value string) bool {
 	return len(value) <= 1024 && loadIdentifier.MatchString(value)
@@ -50,6 +56,18 @@ type LoadWriter struct {
 	projectID string
 	datasetID string
 	location  string
+	ownerTag  string
+	mu        sync.Mutex
+	created   map[string]*createdLoadTable
+}
+
+const loadWriterOwnerLabel = "datatugwriter"
+
+type createdLoadTable struct {
+	etag        string
+	schema      []Field
+	busy        bool
+	loadStarted bool
 }
 
 func (w *LoadWriter) ProjectID() string { return w.projectID }
@@ -65,6 +83,29 @@ type LoadReceipt struct {
 	Rows      uint64
 }
 
+// LoadJobRef identifies a submitted load job without containing credentials or
+// source data. Keep it when LoadTable returns an uncertain outcome.
+type LoadJobRef struct {
+	JobID     string `json:"jobId"`
+	ProjectID string `json:"projectId"`
+	DatasetID string `json:"datasetId"`
+	TableID   string `json:"tableId"`
+	Location  string `json:"location"`
+}
+
+// LoadOutcomeUnknownError carries the durable job reference needed to recover
+// the same load job without submitting it again.
+type LoadOutcomeUnknownError struct{ Job LoadJobRef }
+
+func (e *LoadOutcomeUnknownError) Error() string {
+	if e == nil {
+		return ErrLoadOutcomeUnknown.Error()
+	}
+	return fmt.Sprintf("%s for job %s in %s.%s.%s at %s; recover this job before retrying", ErrLoadOutcomeUnknown, e.Job.JobID, e.Job.ProjectID, e.Job.DatasetID, e.Job.TableID, e.Job.Location)
+}
+
+func (e *LoadOutcomeUnknownError) Unwrap() error { return ErrLoadOutcomeUnknown }
+
 // NewLoadWriter builds a writer pinned to the BigQuery API origin. Redirects
 // are refused so credentials cannot be forwarded to another host.
 func NewLoadWriter(ctx context.Context, cfg LoadConfig) (*LoadWriter, error) {
@@ -73,11 +114,37 @@ func NewLoadWriter(ctx context.Context, cfg LoadConfig) (*LoadWriter, error) {
 	}
 	client := *cfg.HTTPClient
 	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	baseTransport := client.Transport
+	if baseTransport == nil {
+		baseTransport = http.DefaultTransport
+	}
+	client.Transport = bigQueryOriginTransport{base: baseTransport}
 	service, err := bq.NewService(ctx, option.WithHTTPClient(&client))
 	if err != nil {
 		return nil, fail("invalid_input")
 	}
-	return &LoadWriter{service: service, projectID: cfg.ProjectID, datasetID: cfg.DatasetID, location: cfg.Location}, nil
+	return &LoadWriter{service: service, projectID: cfg.ProjectID, datasetID: cfg.DatasetID, location: cfg.Location, ownerTag: opaqueID(), created: map[string]*createdLoadTable{}}, nil
+}
+
+type bigQueryOriginTransport struct{ base http.RoundTripper }
+
+func (t bigQueryOriginTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	if req == nil || req.URL == nil || !allowedBigQueryOrigin(req.URL) {
+		return nil, errors.New("BigQuery writer blocked a request to an unapproved origin")
+	}
+	return t.base.RoundTrip(req)
+}
+
+func allowedBigQueryOrigin(u *url.URL) bool {
+	if u == nil || !strings.EqualFold(u.Scheme, "https") || u.User != nil || u.Fragment != "" {
+		return false
+	}
+	host := strings.ToLower(u.Hostname())
+	if host != "bigquery.googleapis.com" && host != "www.googleapis.com" {
+		return false
+	}
+	port := u.Port()
+	return port == "" || port == "443"
 }
 
 // EnsureDataset creates a missing dataset at the explicit location. An
@@ -132,6 +199,7 @@ func (w *LoadWriter) CreateTable(ctx context.Context, tableID string, schema []F
 		TableReference:   &bq.TableReference{ProjectId: w.projectID, DatasetId: w.datasetID, TableId: tableID},
 		Schema:           &bq.TableSchema{Fields: apiSchema(schema)},
 		TableConstraints: constraints,
+		Labels:           map[string]string{loadWriterOwnerLabel: w.ownerTag},
 	}).Context(ctx).Do()
 	if isConflict(err) {
 		return ErrTableExists
@@ -139,6 +207,19 @@ func (w *LoadWriter) CreateTable(ctx context.Context, tableID string, schema []F
 	if err != nil {
 		return safeLoadError("create destination table", err)
 	}
+	created, err := w.service.Tables.Get(w.projectID, w.datasetID, tableID).Context(ctx).Do()
+	if err != nil {
+		return safeLoadError("verify created destination table", err)
+	}
+	if !w.ownsTableResource(created, tableID, schema) || created.Etag == "" {
+		return ErrTableOwnershipChanged
+	}
+	w.mu.Lock()
+	if w.created == nil {
+		w.created = map[string]*createdLoadTable{}
+	}
+	w.created[tableID] = &createdLoadTable{etag: created.Etag, schema: append([]Field(nil), schema...)}
+	w.mu.Unlock()
 	return nil
 }
 
@@ -149,13 +230,34 @@ func (w *LoadWriter) SetConstraints(ctx context.Context, tableID string, constra
 	if !validLoadIdentifier(tableID) || constraints == nil {
 		return fail("invalid_input")
 	}
-	if _, err := w.service.Tables.Get(w.projectID, w.datasetID, tableID).Context(ctx).Do(); err != nil {
+	owned, err := w.reserveTable(tableID)
+	if err != nil {
+		return err
+	}
+	table, err := w.service.Tables.Get(w.projectID, w.datasetID, tableID).Context(ctx).Do()
+	if err != nil {
+		w.finishTableOperation(tableID, owned, "", false)
 		return safeLoadError("get table constraints target", err)
 	}
-	_, err := w.service.Tables.Patch(w.projectID, w.datasetID, tableID, &bq.Table{TableConstraints: constraints}).Context(ctx).Do()
+	if !w.matchesOwnedTable(table, tableID, owned) {
+		w.finishTableOperation(tableID, owned, "", true)
+		return ErrTableOwnershipChanged
+	}
+	_, err = w.service.Tables.Patch(w.projectID, w.datasetID, tableID, &bq.Table{TableConstraints: constraints}).Context(ctx).Do()
 	if err != nil {
+		w.finishTableOperation(tableID, owned, "", false)
 		return safeLoadError("set table constraints", err)
 	}
+	updated, err := w.service.Tables.Get(w.projectID, w.datasetID, tableID).Context(ctx).Do()
+	if err != nil {
+		w.finishTableOperation(tableID, owned, "", false)
+		return safeLoadError("verify table constraints", err)
+	}
+	if !w.ownsTableResource(updated, tableID, owned.schema) {
+		w.finishTableOperation(tableID, owned, "", true)
+		return ErrTableOwnershipChanged
+	}
+	w.finishTableOperation(tableID, owned, updated.Etag, false)
 	return nil
 }
 
@@ -186,14 +288,30 @@ func (w *LoadWriter) LoadTable(ctx context.Context, tableID string, schema []Fie
 	if !validLoadIdentifier(tableID) || validateLoadSchema(schema) != nil || ndjson == nil {
 		return LoadReceipt{}, fail("invalid_input")
 	}
+	owned, err := w.reserveTable(tableID)
+	if err != nil {
+		return LoadReceipt{}, err
+	}
+	if !equalLoadSchema(schema, owned.schema) {
+		w.finishTableOperation(tableID, owned, "", false)
+		return LoadReceipt{}, ErrTableOwnershipChanged
+	}
 	table, err := w.service.Tables.Get(w.projectID, w.datasetID, tableID).Context(ctx).Do()
 	if err != nil {
+		w.finishTableOperation(tableID, owned, "", false)
 		return LoadReceipt{}, safeLoadError("get destination table", err)
 	}
+	if !w.matchesOwnedTable(table, tableID, owned) {
+		w.finishTableOperation(tableID, owned, "", true)
+		return LoadReceipt{}, ErrTableOwnershipChanged
+	}
 	if !schemaEqualAPI(schema, table.Schema) {
+		w.finishTableOperation(tableID, owned, "", true)
 		return LoadReceipt{}, fail("destination_schema_changed")
 	}
 	jobID := opaqueID()
+	ref := LoadJobRef{JobID: jobID, ProjectID: w.projectID, DatasetID: w.datasetID, TableID: tableID, Location: w.location}
+	w.markLoadStarted(tableID, owned)
 	job := &bq.Job{
 		JobReference: &bq.JobReference{ProjectId: w.projectID, JobId: jobID, Location: w.location},
 		Configuration: &bq.JobConfiguration{Load: &bq.JobConfigurationLoad{
@@ -210,67 +328,170 @@ func (w *LoadWriter) LoadTable(ctx context.Context, tableID string, schema []Fie
 	}
 	jobReference, err := w.service.Jobs.Insert(w.projectID, job).Media(ndjson).Context(ctx).Do()
 	if err != nil {
-		return w.reconcileLoad(ctx, jobID, tableID, err)
+		return w.reconcileLoad(ctx, ref)
 	}
 	if jobReference.JobReference == nil || jobReference.JobReference.ProjectId != w.projectID || jobReference.JobReference.JobId != jobID || !strings.EqualFold(jobReference.JobReference.Location, w.location) {
-		return LoadReceipt{}, ErrLoadOutcomeUnknown
+		return LoadReceipt{}, unknownLoad(ref)
 	}
-	return w.waitForLoad(ctx, jobID, tableID)
+	return w.waitForLoad(ctx, ref)
 }
 
-func (w *LoadWriter) reconcileLoad(ctx context.Context, jobID, tableID string, cause error) (LoadReceipt, error) {
-	job, err := w.service.Jobs.Get(w.projectID, jobID).Location(w.location).Context(ctx).Do()
+func (w *LoadWriter) reconcileLoad(ctx context.Context, ref LoadJobRef) (LoadReceipt, error) {
+	if ctx.Err() != nil {
+		return LoadReceipt{}, unknownLoad(ref)
+	}
+	job, err := w.service.Jobs.Get(w.projectID, ref.JobID).Location(w.location).Context(ctx).Do()
 	if err != nil {
-		if ctx.Err() != nil || !isNotFound(err) {
-			return LoadReceipt{}, ErrLoadOutcomeUnknown
-		}
-		return LoadReceipt{}, safeLoadError("submit load job", cause)
+		return LoadReceipt{}, unknownLoad(ref)
 	}
-	return w.receiptFromJob(job, jobID, tableID)
+	if !matchesLoadReference(job, ref) {
+		return LoadReceipt{}, unknownLoad(ref)
+	}
+	if job.Status != nil && job.Status.State == "DONE" {
+		return w.receiptFromJob(job, ref)
+	}
+	if job.Status != nil && (job.Status.State == "PENDING" || job.Status.State == "RUNNING") {
+		return w.waitForLoad(ctx, ref)
+	}
+	return LoadReceipt{}, unknownLoad(ref)
 }
 
-func (w *LoadWriter) waitForLoad(ctx context.Context, jobID, tableID string) (LoadReceipt, error) {
+// RecoverLoad checks and, while the job remains pending, polls the same load
+// job identified by ref. It never resubmits rows. Callers should use a fresh
+// context after an earlier upload context was canceled.
+func (w *LoadWriter) RecoverLoad(ctx context.Context, ref LoadJobRef) (LoadReceipt, error) {
+	if !w.validJobRef(ref) {
+		return LoadReceipt{}, fail("invalid_input")
+	}
+	if ctx == nil || ctx.Err() != nil {
+		return LoadReceipt{}, unknownLoad(ref)
+	}
+	job, err := w.service.Jobs.Get(w.projectID, ref.JobID).Location(w.location).Context(ctx).Do()
+	if err != nil {
+		return LoadReceipt{}, unknownLoad(ref)
+	}
+	if !matchesLoadReference(job, ref) {
+		return LoadReceipt{}, unknownLoad(ref)
+	}
+	if job.Status != nil && job.Status.State == "DONE" {
+		return w.receiptFromJob(job, ref)
+	}
+	return w.waitForLoad(ctx, ref)
+}
+
+func (w *LoadWriter) waitForLoad(ctx context.Context, ref LoadJobRef) (LoadReceipt, error) {
 	for {
-		job, err := w.service.Jobs.Get(w.projectID, jobID).Location(w.location).Context(ctx).Do()
+		if ctx == nil || ctx.Err() != nil {
+			return LoadReceipt{}, unknownLoad(ref)
+		}
+		job, err := w.service.Jobs.Get(w.projectID, ref.JobID).Location(w.location).Context(ctx).Do()
 		if err != nil {
-			return LoadReceipt{}, ErrLoadOutcomeUnknown
+			return LoadReceipt{}, unknownLoad(ref)
+		}
+		if !matchesLoadReference(job, ref) {
+			return LoadReceipt{}, unknownLoad(ref)
 		}
 		if job.Status != nil && job.Status.State == "DONE" {
-			return w.receiptFromJob(job, jobID, tableID)
+			return w.receiptFromJob(job, ref)
 		}
 		select {
 		case <-ctx.Done():
-			return LoadReceipt{}, ErrLoadOutcomeUnknown
+			return LoadReceipt{}, unknownLoad(ref)
 		case <-time.After(250 * time.Millisecond):
 		}
 	}
 }
 
-func (w *LoadWriter) receiptFromJob(job *bq.Job, expectedJobID, tableID string) (LoadReceipt, error) {
-	if job == nil || job.JobReference == nil || job.JobReference.ProjectId != w.projectID || job.JobReference.JobId != expectedJobID || !strings.EqualFold(job.JobReference.Location, w.location) || job.Status == nil {
-		return LoadReceipt{}, ErrLoadOutcomeUnknown
+func (w *LoadWriter) receiptFromJob(job *bq.Job, ref LoadJobRef) (LoadReceipt, error) {
+	if job == nil || job.JobReference == nil || job.JobReference.ProjectId != w.projectID || job.JobReference.JobId != ref.JobID || !strings.EqualFold(job.JobReference.Location, w.location) || job.Status == nil {
+		return LoadReceipt{}, unknownLoad(ref)
 	}
 	if job.Configuration == nil || job.Configuration.Load == nil || job.Configuration.Load.DestinationTable == nil {
-		return LoadReceipt{}, ErrLoadOutcomeUnknown
+		return LoadReceipt{}, unknownLoad(ref)
 	}
 	destination := job.Configuration.Load.DestinationTable
-	if destination.ProjectId != w.projectID || destination.DatasetId != w.datasetID || destination.TableId != tableID {
-		return LoadReceipt{}, ErrLoadOutcomeUnknown
+	if destination.ProjectId != w.projectID || destination.DatasetId != w.datasetID || destination.TableId != ref.TableID {
+		return LoadReceipt{}, unknownLoad(ref)
 	}
 	if job.Status.State != "DONE" {
-		return LoadReceipt{}, ErrLoadOutcomeUnknown
+		return LoadReceipt{}, unknownLoad(ref)
 	}
 	if job.Status.ErrorResult != nil {
 		return LoadReceipt{}, fail("load_job_failed")
 	}
 	rows := uint64(0)
-	if job.Statistics != nil && job.Statistics.Load != nil {
-		if job.Statistics.Load.OutputRows < 0 {
-			return LoadReceipt{}, ErrLoadOutcomeUnknown
-		}
-		rows = uint64(job.Statistics.Load.OutputRows)
+	if job.Statistics == nil || job.Statistics.Load == nil || job.Statistics.Load.OutputRows < 0 {
+		return LoadReceipt{}, unknownLoad(ref)
 	}
-	return LoadReceipt{JobID: job.JobReference.JobId, ProjectID: w.projectID, DatasetID: w.datasetID, TableID: tableID, Location: w.location, Rows: rows}, nil
+	rows = uint64(job.Statistics.Load.OutputRows)
+	return LoadReceipt{JobID: ref.JobID, ProjectID: ref.ProjectID, DatasetID: ref.DatasetID, TableID: ref.TableID, Location: ref.Location, Rows: rows}, nil
+}
+
+func unknownLoad(ref LoadJobRef) error { return &LoadOutcomeUnknownError{Job: ref} }
+
+func matchesLoadReference(job *bq.Job, ref LoadJobRef) bool {
+	return job != nil && job.JobReference != nil && job.JobReference.ProjectId == ref.ProjectID &&
+		job.JobReference.JobId == ref.JobID && strings.EqualFold(job.JobReference.Location, ref.Location)
+}
+
+func (w *LoadWriter) validJobRef(ref LoadJobRef) bool {
+	return ref.JobID != "" && len(ref.JobID) <= 1024 && loadJobIDPattern.MatchString(ref.JobID) &&
+		ref.ProjectID == w.projectID && ref.DatasetID == w.datasetID && validLoadIdentifier(ref.TableID) && strings.EqualFold(ref.Location, w.location)
+}
+
+func (w *LoadWriter) reserveTable(tableID string) (*createdLoadTable, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	owned := w.created[tableID]
+	if owned == nil {
+		return nil, ErrTableNotOwned
+	}
+	if owned.busy || owned.loadStarted {
+		return nil, ErrTableBusy
+	}
+	owned.busy = true
+	return owned, nil
+}
+
+func (w *LoadWriter) finishTableOperation(tableID string, owned *createdLoadTable, etag string, forget bool) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.created[tableID] != owned {
+		return
+	}
+	if forget {
+		delete(w.created, tableID)
+		return
+	}
+	if etag != "" {
+		owned.etag = etag
+	}
+	owned.busy = false
+}
+
+func (w *LoadWriter) markLoadStarted(tableID string, owned *createdLoadTable) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.created[tableID] == owned {
+		owned.loadStarted = true
+		owned.busy = false
+	}
+}
+
+func (w *LoadWriter) ownsTableResource(table *bq.Table, tableID string, schema []Field) bool {
+	return table != nil && table.TableReference != nil && table.TableReference.ProjectId == w.projectID &&
+		table.TableReference.DatasetId == w.datasetID && table.TableReference.TableId == tableID &&
+		table.Labels[loadWriterOwnerLabel] == w.ownerTag && table.Etag != "" && schemaEqualAPI(schema, table.Schema)
+}
+
+func (w *LoadWriter) matchesOwnedTable(table *bq.Table, tableID string, owned *createdLoadTable) bool {
+	return owned != nil && table != nil && table.TableReference != nil && table.TableReference.ProjectId == w.projectID &&
+		table.TableReference.DatasetId == w.datasetID && table.TableReference.TableId == tableID &&
+		table.Labels[loadWriterOwnerLabel] == w.ownerTag && table.Etag != "" && table.Etag == owned.etag && schemaEqualAPI(owned.schema, table.Schema)
+}
+
+func equalLoadSchema(left, right []Field) bool {
+	return schemaEqualAPI(left, &bq.TableSchema{Fields: apiSchema(right)})
 }
 
 func apiSchema(schema []Field) []*bq.TableFieldSchema {
