@@ -243,8 +243,14 @@ func (w *LoadWriter) SetConstraints(ctx context.Context, tableID string, constra
 		w.finishTableOperation(tableID, owned, "", true)
 		return ErrTableOwnershipChanged
 	}
-	_, err = w.service.Tables.Patch(w.projectID, w.datasetID, tableID, &bq.Table{TableConstraints: constraints}).Context(ctx).Do()
+	patch := w.service.Tables.Patch(w.projectID, w.datasetID, tableID, &bq.Table{TableConstraints: constraints}).Context(ctx)
+	patch.Header().Set("If-Match", owned.etag)
+	_, err = patch.Do()
 	if err != nil {
+		if isPreconditionFailed(err) {
+			w.finishTableOperation(tableID, owned, "", true)
+			return ErrTableOwnershipChanged
+		}
 		w.finishTableOperation(tableID, owned, "", false)
 		return safeLoadError("set table constraints", err)
 	}
@@ -284,6 +290,11 @@ func (w *LoadWriter) CheckTablesAbsent(ctx context.Context, tableIDs []string) e
 
 // LoadTable submits one atomic NEWLINE_DELIMITED_JSON load job. The table must
 // have been created by CreateTable. It never appends to or truncates a table.
+// The writer checks ownership and ETag immediately before submission, but the
+// BigQuery load-job API has no destination-table ETag precondition; another
+// principal can still replace the table between that check and job dispatch.
+// A receipt confirms the identified load job's result, not exclusion of that
+// external concurrent-writer race.
 func (w *LoadWriter) LoadTable(ctx context.Context, tableID string, schema []Field, ndjson io.Reader) (LoadReceipt, error) {
 	if !validLoadIdentifier(tableID) || validateLoadSchema(schema) != nil || ndjson == nil {
 		return LoadReceipt{}, fail("invalid_input")
@@ -564,6 +575,11 @@ func isNotFound(err error) bool {
 func isConflict(err error) bool {
 	var apiErr *googleapi.Error
 	return errors.As(err, &apiErr) && apiErr.Code == http.StatusConflict
+}
+
+func isPreconditionFailed(err error) bool {
+	var apiErr *googleapi.Error
+	return errors.As(err, &apiErr) && apiErr.Code == http.StatusPreconditionFailed
 }
 
 func safeLoadError(operation string, err error) error {

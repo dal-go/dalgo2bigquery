@@ -195,6 +195,44 @@ func TestLoadWriterRefusesTablesItDidNotCreate(t *testing.T) {
 	}
 }
 
+func TestSetConstraintsFencesPatchWithETagAndForgetsStaleOwnership(t *testing.T) {
+	var writer *LoadWriter
+	getRequests, patchRequests := 0, 0
+	transport := loadRoundTripper(func(req *http.Request) (*http.Response, error) {
+		switch {
+		case req.Method == http.MethodGet && strings.HasSuffix(req.URL.Path, "/datasets/demo/tables/People"):
+			getRequests++
+			return loadResponse(req, http.StatusOK, fmt.Sprintf(`{"tableReference":{"projectId":"demodb","datasetId":"demo","tableId":"People"},"etag":"etag-1","labels":{"%s":%q},"schema":{"fields":[{"name":"id","type":"INT64","mode":"NULLABLE"}]}}`, loadWriterOwnerLabel, writer.ownerTag)), nil
+		case req.Method == http.MethodPatch && strings.HasSuffix(req.URL.Path, "/datasets/demo/tables/People"):
+			patchRequests++
+			if got := req.Header.Get("If-Match"); got != "etag-1" {
+				t.Errorf("Tables.Patch If-Match = %q, want tracked ETag etag-1", got)
+			}
+			// Model a replacement after the GET: the server rejects the stale ETag.
+			return loadResponse(req, http.StatusPreconditionFailed, `{"error":{"code":412,"message":"Precondition Failed"}}`), nil
+		default:
+			t.Errorf("unexpected request after stale ETag: %s %s", req.Method, req.URL)
+			return loadResponse(req, http.StatusInternalServerError, `{}`), nil
+		}
+	})
+	var err error
+	writer, err = NewLoadWriter(context.Background(), LoadConfig{ProjectID: "demodb", DatasetID: "demo", Location: "US", HTTPClient: &http.Client{Transport: transport}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	schema := []Field{{Name: "id", Type: "INT64", Mode: "NULLABLE"}}
+	writer.created["People"] = &createdLoadTable{etag: "etag-1", schema: schema}
+	if err := writer.SetConstraints(context.Background(), "People", &bq.TableConstraints{PrimaryKey: &bq.TableConstraintsPrimaryKey{Columns: []string{"id"}}}); !errors.Is(err, ErrTableOwnershipChanged) {
+		t.Fatalf("SetConstraints with stale ETag = %v, want ownership changed", err)
+	}
+	if err := writer.SetConstraints(context.Background(), "People", &bq.TableConstraints{}); !errors.Is(err, ErrTableNotOwned) {
+		t.Fatalf("retry after stale ETag = %v, want table not owned", err)
+	}
+	if getRequests != 1 || patchRequests != 1 {
+		t.Fatalf("requests after stale ETag: GET=%d PATCH=%d", getRequests, patchRequests)
+	}
+}
+
 func TestLoadWriterBlocksResumableLocationBeforeSendingCredentialsOrRows(t *testing.T) {
 	var writer *LoadWriter
 	var calls []string

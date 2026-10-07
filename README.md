@@ -43,6 +43,11 @@ writer creates a missing dataset only at the requested location, refuses
 existing destination tables, and records a private ownership label, schema and
 ETag for each table it creates. `SetConstraints` and `LoadTable` refuse tables
 that this writer did not create or whose ownership, schema or ETag changed.
+Constraint patches send the tracked ETag as `If-Match`, so a stale metadata
+update is rejected by BigQuery. The load-job API has no destination-table ETag
+precondition: an external principal can replace a table between the writer's
+final ownership check and load dispatch. A load receipt verifies the identified
+job and its destination, but cannot fence that external concurrent-writer race.
 The authenticated transport checks every dispatched API, resumable-upload and
 status request against the fixed HTTPS Google API origins before credentials are
 added, including SDK-generated chunk requests. It submits explicit-schema NDJSON load jobs with
