@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-const observedDataset = `{"datasetReference":{"projectId":"source-project","datasetId":"ds"},"location":"EU"}`
+const observedDataset = `{"datasetReference":{"projectId":"source-project","datasetId":"ds"},"location":"EU","type":"DEFAULT"}`
 const observedTable = `{"tableReference":{"projectId":"source-project","datasetId":"ds","tableId":"tbl"},"type":"TABLE","schema":{"fields":[{"name":"n","type":"INTEGER","mode":"NULLABLE"}]}}`
 
 // Metadata inspection must not read, reserve, or mutate the query ledger.
@@ -77,6 +77,44 @@ func TestObserveConfiguredMetadataOnly(t *testing.T) {
 	}
 	if got.Digest == "" || got.Type != "TABLE" || got.Location != "EU" || got.Schema[0].Name != "n" || !got.ObservedAt.Equal(clock.Now()) {
 		t.Fatal("invalid native metadata observation", got)
+	}
+}
+
+func TestObserveConfiguredDatasetKinds(t *testing.T) {
+	for _, tc := range []struct {
+		name, member, wantError string
+		wantCalls               int
+	}{
+		{"default", `,"type":"DEFAULT"`, "", 2},
+		{"public", `,"type":"PUBLIC"`, "", 2},
+		{"legacy-omitted", "", "", 2},
+		{"linked", `,"type":"LINKED"`, "source_ineligible", 1},
+		{"external", `,"type":"EXTERNAL"`, "source_ineligible", 1},
+		{"biglake", `,"type":"BIGLAKE_ICEBERG"`, "source_ineligible", 1},
+		{"unknown", `,"type":"FUTURE"`, "source_ineligible", 1},
+		{"null", `,"type":null`, "source_ineligible", 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dataset := strings.Replace(observedDataset, `,"type":"DEFAULT"`, tc.member, 1)
+			calls := 0
+			c, _, _, digest := configuredObservationClient(t, func(req *http.Request) (*http.Response, error) {
+				calls++
+				if strings.HasSuffix(req.URL.Path, "/tables/tbl") {
+					return response(observedTable), nil
+				}
+				return response(dataset), nil
+			})
+			got, e := c.ObserveConfigured(context.Background(), digest, DefaultBounds())
+			if (tc.wantError == "" && e != nil) || (tc.wantError != "" && codeOf(e) != tc.wantError) || calls != tc.wantCalls {
+				t.Fatalf("dataset kind %s: observation=%v error=%v calls=%d", tc.name, got, e, calls)
+			}
+			if tc.wantError == "" && (got.Type != "TABLE" || got.Location != "EU") {
+				t.Fatal("native dataset was not observed", got)
+			}
+			if tc.wantError != "" && got.Digest != "" {
+				t.Fatal("rejected dataset produced observation", got)
+			}
+		})
 	}
 }
 
