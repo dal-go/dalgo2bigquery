@@ -12,12 +12,13 @@ import (
 )
 
 type Field struct {
-	Name      string  `json:"name"`
-	Type      string  `json:"type"`
-	Mode      string  `json:"mode"`
-	Fields    []Field `json:"fields,omitempty"`
-	Precision string  `json:"precision,omitempty"`
-	Scale     string  `json:"scale,omitempty"`
+	Name        string  `json:"name"`
+	Type        string  `json:"type"`
+	Mode        string  `json:"mode"`
+	Description string  `json:"description,omitempty"`
+	Fields      []Field `json:"fields,omitempty"`
+	Precision   string  `json:"precision,omitempty"`
+	Scale       string  `json:"scale,omitempty"`
 }
 type Cell struct {
 	Type  string `json:"type"`
