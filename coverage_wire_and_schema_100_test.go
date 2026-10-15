@@ -196,7 +196,7 @@ func TestWire_Call_RetryDate_And_Deadlines(t *testing.T) {
 	// Retry-After exceeding deadline (line 468)
 	calls = 0
 	scopeShort := &operationScope{
-		deadline: time.Now().Add(100 * time.Millisecond), // short deadline
+		deadline: time.Now().Add(10 * time.Second),
 		bounds:   Bounds{ResponseBytes: 1024, TotalResponseBytes: 65536, HTTPMs: 5000},
 	}
 	clientShort, _ := NewClient(Config{
@@ -207,7 +207,7 @@ func TestWire_Call_RetryDate_And_Deadlines(t *testing.T) {
 		Transport: rt(func(req *http.Request) (*http.Response, error) {
 			return &http.Response{
 				StatusCode: 429,
-				Header:     http.Header{"Retry-After": []string{"30"}}, // 30 seconds > 100ms deadline
+				Header:     http.Header{"Retry-After": []string{"3600"}}, // 3600s clamped to 15s > 10s deadline
 				Body:       io.NopCloser(strings.NewReader(`{"error":{"code":429}}`)),
 			}, nil
 		}),
