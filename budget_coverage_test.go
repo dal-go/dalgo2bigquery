@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 )
 
 // Not parallel: mutates package-level randRead seam.
@@ -298,6 +299,29 @@ func TestBudget_ClientRunMethods(t *testing.T) {
 	if err := ledgerLockContext(canceledCtx, tmpFile); errorCode(err) != "local_stopped" || err.(*Error).Reason != "deadline" {
 		t.Fatalf("expected local_stopped/deadline from ledgerLockContext on canceled context, got %v", err)
 	}
+
+	// ledgerLockContext canceled while waiting on lock (line 311)
+	lockPath := filepath.Join(t.TempDir(), "held.lock")
+	heldFile, err := ledgerOpen(lockPath, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer heldFile.Close()
+	if err := ledgerLock(heldFile, true); err != nil {
+		t.Fatal(err)
+	}
+
+	secondFile, err := ledgerOpen(lockPath, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer secondFile.Close()
+
+	waitCtx, waitCancel := context.WithCancel(context.Background())
+	time.AfterFunc(time.Millisecond, waitCancel)
+	if err := ledgerLockContext(waitCtx, secondFile); errorCode(err) != "local_stopped" || err.(*Error).Reason != "deadline" {
+		t.Fatalf("expected local_stopped/deadline when canceled in select, got %v", err)
+	}
 }
 
 type stepContext struct {
@@ -512,18 +536,18 @@ func TestBudget_FileLedger_AdditionalBranches(t *testing.T) {
 		t.Fatalf("expected invalid_input on >64MB session.json, got %v", err)
 	}
 
-	// readState when session.json has non-not-exist error (e.g. unreadable file)
+	// readState when session.json has non-not-exist error (e.g. symlink rejected by O_NOFOLLOW)
 	if runtime.GOOS != "windows" {
-		permDir := filepath.Join(t.TempDir(), "fl-perm")
-		flPerm, err := NewFileLedger(permDir)
+		symDir := filepath.Join(t.TempDir(), "fl-sym")
+		flSym, err := NewFileLedger(symDir)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(filepath.Join(permDir, "session.json"), []byte("{}"), 0000); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := flPerm.readState(context.Background()); errorCode(err) != "invalid_input" {
-			t.Fatalf("expected invalid_input on unreadable session.json, got %v", err)
+		target := filepath.Join(t.TempDir(), "target.json")
+		_ = os.WriteFile(target, []byte("{}"), 0600)
+		_ = os.Symlink(target, filepath.Join(symDir, "session.json"))
+		if _, err := flSym.readState(context.Background()); errorCode(err) != "invalid_input" {
+			t.Fatalf("expected invalid_input on symlink session.json, got %v", err)
 		}
 	}
 }
