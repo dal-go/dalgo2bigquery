@@ -12,6 +12,10 @@ import (
 	"time"
 )
 
+var makeFileNonPrivate = func(path string) error {
+	return os.Chmod(path, 0644)
+}
+
 // Not parallel: mutates package-level randRead seam.
 func TestBudget_OpaqueIDPanic(t *testing.T) {
 	orig := randRead
@@ -422,23 +426,31 @@ func TestBudget_FileLedger_AdditionalBranches(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// lock with invalid file permissions (not 0600)
+	// lock failure when path has non-private permissions
 	badLock := filepath.Join(dir, "bad-perm.lock")
-	if err := os.WriteFile(badLock, []byte{}, 0644); err != nil {
+	lockFile, err := ledgerOpen(badLock, true)
+	if err != nil {
 		t.Fatal(err)
 	}
-	_ = os.Chmod(badLock, 0644)
+	_ = lockFile.Close()
+	if err := makeFileNonPrivate(badLock); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := fl.lock("bad-perm.lock"); errorCode(err) != "invalid_input" {
-		t.Fatalf("expected invalid_input on non-0600 lock, got %v", err)
+		t.Fatalf("expected invalid_input on non-private lock, got %v", err)
 	}
 
 	// lease when l.lock fails
 	runID := strings.Repeat("c", 48)
 	badLease := filepath.Join(dir, "run-"+runID+".lock")
-	if err := os.WriteFile(badLease, []byte{}, 0644); err != nil {
+	leaseFile, err := ledgerOpen(badLease, true)
+	if err != nil {
 		t.Fatal(err)
 	}
-	_ = os.Chmod(badLease, 0644)
+	_ = leaseFile.Close()
+	if err := makeFileNonPrivate(badLease); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := fl.lease(context.Background(), runID); errorCode(err) != "invalid_input" {
 		t.Fatalf("expected invalid_input on lease when lock fails, got %v", err)
 	}
