@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -406,13 +407,7 @@ func TestBudget_FileLedger_AdditionalBranches(t *testing.T) {
 		t.Fatalf("expected invalid_input for 0755 directory, got %v", err)
 	}
 
-	dir, err := os.MkdirTemp("", "fl-more-*")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(dir)
-	_ = os.Chmod(dir, 0700)
-
+	dir := filepath.Join(t.TempDir(), "fl-more")
 	fl, err := NewFileLedger(dir)
 	if err != nil {
 		t.Fatal(err)
@@ -441,7 +436,7 @@ func TestBudget_FileLedger_AdditionalBranches(t *testing.T) {
 
 	// lease when lock is held by another handle
 	runID2 := strings.Repeat("e", 48)
-	lockFd, err := os.OpenFile(filepath.Join(dir, "run-"+runID2+".lock"), os.O_CREATE|os.O_RDWR, 0600)
+	lockFd, err := ledgerOpen(filepath.Join(dir, "run-"+runID2+".lock"), true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -461,12 +456,7 @@ func TestBudget_FileLedger_AdditionalBranches(t *testing.T) {
 	}
 
 	// updateContext with data > 64<<20
-	hugeDir, err := os.MkdirTemp("", "fl-huge-*")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(hugeDir)
-	_ = os.Chmod(hugeDir, 0700)
+	hugeDir := filepath.Join(t.TempDir(), "fl-huge")
 	flHuge, err := NewFileLedger(hugeDir)
 	if err != nil {
 		t.Fatal(err)
@@ -479,31 +469,23 @@ func TestBudget_FileLedger_AdditionalBranches(t *testing.T) {
 	}
 
 	// updateContext when ledgerTemp fails (dir made readonly during update)
-	roDir, err := os.MkdirTemp("", "fl-ro-*")
-	if err != nil {
-		t.Fatal(err)
+	if runtime.GOOS != "windows" {
+		roDir := filepath.Join(t.TempDir(), "fl-ro")
+		flRO, err := NewFileLedger(roDir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := flRO.update(func(s *ledgerState) error {
+			_ = os.Chmod(roDir, 0500)
+			return nil
+		}); errorCode(err) != "invalid_input" {
+			t.Fatalf("expected invalid_input when ledgerTemp fails, got %v", err)
+		}
+		_ = os.Chmod(roDir, 0700)
 	}
-	defer os.RemoveAll(roDir)
-	_ = os.Chmod(roDir, 0700)
-	flRO, err := NewFileLedger(roDir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := flRO.update(func(s *ledgerState) error {
-		_ = os.Chmod(roDir, 0500)
-		return nil
-	}); errorCode(err) != "invalid_input" {
-		t.Fatalf("expected invalid_input when ledgerTemp fails, got %v", err)
-	}
-	_ = os.Chmod(roDir, 0700)
 
 	// updateContext when ledgerReplace fails (target is a directory)
-	replDir, err := os.MkdirTemp("", "fl-repl-*")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(replDir)
-	_ = os.Chmod(replDir, 0700)
+	replDir := filepath.Join(t.TempDir(), "fl-repl")
 	flRepl, err := NewFileLedger(replDir)
 	if err != nil {
 		t.Fatal(err)
@@ -515,17 +497,12 @@ func TestBudget_FileLedger_AdditionalBranches(t *testing.T) {
 	}
 
 	// readState when session.json > 64<<20
-	sizeDir, err := os.MkdirTemp("", "fl-size-*")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(sizeDir)
-	_ = os.Chmod(sizeDir, 0700)
+	sizeDir := filepath.Join(t.TempDir(), "fl-size")
 	flSize, err := NewFileLedger(sizeDir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	sessFile, err := os.OpenFile(filepath.Join(sizeDir, "session.json"), os.O_CREATE|os.O_RDWR, 0600)
+	sessFile, err := ledgerOpen(filepath.Join(sizeDir, "session.json"), true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -536,34 +513,25 @@ func TestBudget_FileLedger_AdditionalBranches(t *testing.T) {
 	}
 
 	// readState when session.json has non-not-exist error (e.g. unreadable file)
-	permDir, err := os.MkdirTemp("", "fl-perm-*")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(permDir)
-	_ = os.Chmod(permDir, 0700)
-	flPerm, err := NewFileLedger(permDir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(permDir, "session.json"), []byte("{}"), 0000); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := flPerm.readState(context.Background()); errorCode(err) != "invalid_input" {
-		t.Fatalf("expected invalid_input on unreadable session.json, got %v", err)
+	if runtime.GOOS != "windows" {
+		permDir := filepath.Join(t.TempDir(), "fl-perm")
+		flPerm, err := NewFileLedger(permDir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(permDir, "session.json"), []byte("{}"), 0000); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := flPerm.readState(context.Background()); errorCode(err) != "invalid_input" {
+			t.Fatalf("expected invalid_input on unreadable session.json, got %v", err)
+		}
 	}
 }
 
 func TestBudget_ContextCanceledSteps(t *testing.T) {
 	t.Parallel()
 
-	dir, err := os.MkdirTemp("", "fl-ctx-*")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(dir)
-	_ = os.Chmod(dir, 0700)
-
+	dir := filepath.Join(t.TempDir(), "fl-ctx")
 	fl, err := NewFileLedger(dir)
 	if err != nil {
 		t.Fatal(err)
