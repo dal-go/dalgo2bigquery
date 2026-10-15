@@ -1566,8 +1566,8 @@ func TestJobs_Reader_Isolated_Hooks(t *testing.T) {
 	}
 
 	freshClient := func() (*Client, Approval) {
-		lf, _ := NewFileLedger(filepath.Join(t.TempDir(), "ledger"))
-		cf, _, _, _ := dynamicClient(t, lf, "1000000")
+		lm := NewMemoryLedger()
+		cf, _, _, _ := dynamicClient(t, lm, "1000000")
 		pf := previewFor(t, cf, "1000")
 		af, _ := cf.Approve(pf, pf.ApprovalDigest)
 		return cf, af

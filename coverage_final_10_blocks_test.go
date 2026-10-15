@@ -333,7 +333,9 @@ func TestCoverage10_Wire_Call_Sleep_Error_On_GET_Retry(t *testing.T) {
 		Provider: &testProvider{identity: Identity{Principal: Principal{Kind: "workload", Subject: "s", Generation: "1"}, Read: true, ExpiresAt: time.Now().Add(time.Hour)}},
 		Ledger:   NewMemoryLedger(),
 		Transport: rt(func(*http.Request) (*http.Response, error) {
-			return &http.Response{StatusCode: 500, Body: io.NopCloser(strings.NewReader("{}"))}, nil
+			h := make(http.Header)
+			h.Set("Retry-After", time.Now().Add(-10*time.Minute).UTC().Format(http.TimeFormat))
+			return &http.Response{StatusCode: 500, Header: h, Body: io.NopCloser(strings.NewReader("{}"))}, nil
 		}),
 		Prepare: func(context.Context) (ReadPlan, string, error) { return ReadPlan{}, "", nil },
 		Clock:   sleepErrClock{},
