@@ -75,12 +75,14 @@ func (p fixtureProvider) Authorize(_ context.Context, gate http.RoundTripper) (b
 
 type fixtureTransport struct{}
 
+var readFixture = fixtures.ReadFile
+
 func (fixtureTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	file := "dataset.json"
 	if strings.HasSuffix(req.URL.Path, "/tables/sample") {
 		file = "table.json"
 	}
-	raw, e := fixtures.ReadFile("testdata/" + file)
+	raw, e := readFixture("testdata/" + file)
 	if e != nil {
 		return nil, e
 	}
@@ -99,11 +101,13 @@ func fixtureFactory(context.Context) (bigquery.DiscoveryConfig, error) {
 	}, nil
 }
 
+var exit = os.Exit
+
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 	if e := run(ctx, os.Args[1:], providerFactory, os.Stdout); e != nil {
 		fmt.Fprintln(os.Stderr, "metadata-discovery:", e)
-		os.Exit(1)
+		exit(1)
 	}
 }
