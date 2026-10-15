@@ -161,6 +161,8 @@ func NewHandler(cfg Config) (http.Handler, error) {
 	}), nil
 }
 
+var listen = net.Listen
+
 // Serve starts only when deliberately called by an operator's runnable program.
 // The caller owns ctx and its cancellation; no package initialization binds ports.
 // The operator injects NewHandler(Config) after establishing trusted credentials.
@@ -169,7 +171,7 @@ func Serve(ctx context.Context, address string, handler http.Handler) error {
 	if e != nil || net.ParseIP(host) == nil || !net.ParseIP(host).IsLoopback() {
 		return &bigquery.Error{Code: "invalid_input"}
 	}
-	listener, e := net.Listen("tcp", address)
+	listener, e := listen("tcp", address)
 	if e != nil {
 		return e
 	}
