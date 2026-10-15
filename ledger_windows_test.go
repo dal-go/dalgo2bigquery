@@ -145,6 +145,17 @@ func TestWindowsLedgerSeamFailures(t *testing.T) {
 	}
 	defer f.Close()
 
+	// 0. ledgerLstat fails with non-not-exist error
+	origLstat := ledgerLstat
+	defer func() { ledgerLstat = origLstat }()
+	ledgerLstat = func(name string) (os.FileInfo, error) {
+		return nil, errors.New("lstat fail")
+	}
+	if err := ledgerMkdir(dir); err == nil {
+		t.Fatal("expected error from ledgerMkdir when ledgerLstat fails")
+	}
+	ledgerLstat = origLstat
+
 	// 1. ledgerGetFileSecurity fails
 	origSec := ledgerGetFileSecurity
 	defer func() { ledgerGetFileSecurity = origSec }()

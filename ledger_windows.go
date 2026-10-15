@@ -23,12 +23,14 @@ var ledgerSecurity = func() (*windows.SECURITY_DESCRIPTOR, *windows.SID, error) 
 	return sd, sid, e
 }
 
+var ledgerLstat = os.Lstat
+
 func ledgerMkdir(dir string) error {
 	name, e := windows.UTF16PtrFromString(dir)
 	if e != nil {
 		return e
 	}
-	if _, e := os.Lstat(dir); e == nil {
+	if _, e := ledgerLstat(dir); e == nil {
 		return nil
 	} else if !os.IsNotExist(e) {
 		return e
