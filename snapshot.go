@@ -3,7 +3,6 @@ package bigquery
 import (
 	"context"
 	"encoding/base64"
-	"encoding/json"
 	"time"
 )
 
@@ -40,7 +39,7 @@ func (c *Client) Snapshot(ctx context.Context, receipt Receipt) (SnapshotResult,
 			}
 			out.Receipt = copied
 			if record.Cursor != nil {
-				raw, e := json.Marshal(record.Cursor)
+				raw, e := jsonMarshal(record.Cursor)
 				if e != nil {
 					return e
 				}

@@ -13,6 +13,7 @@ import (
 var identifier = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 var projectID = regexp.MustCompile(`^[a-z][a-z0-9-]{4,61}[a-z0-9]$`)
 var locationID = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9-]{0,63}$`)
+var renderPlanFn = renderPlan
 
 func sourceDigest(p SourceProfile) (string, error) {
 	for _, s := range []string{p.SourceID, p.DescriptorDigest, p.PublisherReviewRef, p.RightsReviewRef} {
@@ -151,7 +152,7 @@ func Compile(profile SourceProfile, query dal.Query) (ReadPlan, error) {
 	if e != nil {
 		return ReadPlan{}, e
 	}
-	plan.SQL, e = renderPlan(profile, plan)
+	plan.SQL, e = renderPlanFn(profile, plan)
 	if e != nil {
 		return ReadPlan{}, e
 	}

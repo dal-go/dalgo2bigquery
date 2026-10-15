@@ -205,9 +205,11 @@ type Config struct {
 	Clock     Clock
 }
 
+var jsonMarshal = json.Marshal
+
 func jsonCopy[T any](v T) (T, error) {
 	var out T
-	b, e := json.Marshal(v)
+	b, e := jsonMarshal(v)
 	if e == nil {
 		e = json.Unmarshal(b, &out)
 	}
@@ -217,7 +219,7 @@ func jsonCopy[T any](v T) (T, error) {
 	return out, nil
 }
 func digestObject(name string, v any) (string, error) {
-	raw, e := json.Marshal(v)
+	raw, e := jsonMarshal(v)
 	if e != nil {
 		return "", fail("invalid_input")
 	}

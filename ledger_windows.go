@@ -126,12 +126,14 @@ func ledgerLock(f *os.File, nonblocking bool) error {
 func ledgerUnlock(f *os.File) error {
 	return windows.UnlockFileEx(windows.Handle(f.Fd()), 0, 1, 0, &windows.Overlapped{})
 }
-func ledgerSecureTemp(f *os.File) error {
+
+var ledgerSecureTemp = func(f *os.File) error {
 	if !ledgerPrivateHandle(f) {
 		return fail("invalid_input")
 	}
 	return nil
 }
+
 func ledgerReplace(from, to string) error {
 	a, e := windows.UTF16PtrFromString(from)
 	if e != nil {

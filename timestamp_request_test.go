@@ -13,6 +13,7 @@ import (
 )
 
 func TestTimestampRequestFixture(t *testing.T) {
+	t.Parallel()
 	raw, err := os.ReadFile("testdata/requests/timestamp-parameters-r1.json")
 	if err != nil {
 		t.Fatal(err)
@@ -96,6 +97,7 @@ func TestTimestampRequestFixture(t *testing.T) {
 }
 
 func TestTimestampRequestNullAndEmpty(t *testing.T) {
+	t.Parallel()
 	for _, dry := range []bool{true, false} {
 		plan := ReadPlan{SQL: "internally compiled", Parameters: []Parameter{{"p0", "TIMESTAMP", nil}, {"p1", "ARRAY<TIMESTAMP>", []any{}}}}
 		request, err := queryRequest(plan, Execution{MaximumBytesBilled: "1"}, DefaultBounds(), "EU", dry)
@@ -114,6 +116,7 @@ func TestTimestampRequestNullAndEmpty(t *testing.T) {
 }
 
 func TestTimestampRequestRejectsInvalidValues(t *testing.T) {
+	t.Parallel()
 	profile := testProfile(t)
 	profile.Schema = []Field{{Name: "ts", Type: "TIMESTAMP", Mode: "NULLABLE"}}
 	for _, value := range []string{"-62135596800000001", "253402300800000000", "1.5", "1\n", "9223372036854775808"} {

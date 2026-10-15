@@ -41,6 +41,7 @@ func discoveryFixtureClient(t *testing.T, transport http.RoundTripper) (*Discove
 }
 
 func TestDiscoveryPublicProjectionAndExactDispatch(t *testing.T) {
+	t.Parallel()
 	dataset, table := discoveryFixture(t, "dataset"), discoveryFixture(t, "table")
 	var requests []string
 	c, _, _, _ := discoveryFixtureClient(t, rt(func(req *http.Request) (*http.Response, error) {
@@ -83,6 +84,7 @@ func TestDiscoveryPublicProjectionAndExactDispatch(t *testing.T) {
 // The registry and Directory authored this identical golden public fixture.
 // Production metadata dispatch/projection must reproduce its entire envelope.
 func TestDiscoverySharedRegistryGolden(t *testing.T) {
+	t.Parallel()
 	var want PublicDiscovery
 	if e := json.Unmarshal([]byte(discoveryFixture(t, "public-observation")), &want); e != nil {
 		t.Fatal(e)
@@ -118,6 +120,7 @@ func TestDiscoverySharedRegistryGolden(t *testing.T) {
 }
 
 func TestDiscoveryDenialAndResponseChanges(t *testing.T) {
+	t.Parallel()
 	for _, name := range []string{"unknown-source", "zero-bounds", "expired", "read-denied", "bad-principal", "cancelled", "policy-before-dispatch", "policy-after-dataset", "identity-after-dataset", "policy-after-table", "identity-after-table", "dataset-ref", "dataset-location", "table-ref", "table-location", "unknown-type", "response-bound", "cumulative-bound", "duplicate-json", "401", "403", "404", "redirect"} {
 		t.Run(name, func(t *testing.T) {
 			dataset, table := discoveryFixture(t, "dataset"), discoveryFixture(t, "table")
@@ -234,6 +237,7 @@ func (p discoveryMutatingProvider) Authorize(ctx context.Context, gate http.Roun
 }
 
 func TestDiscoveryGuardRejectsProviderRequestMutation(t *testing.T) {
+	t.Parallel()
 	for name, mutate := range map[string]func(*http.Request){
 		"jobs":        func(r *http.Request) { r.URL.Path = "/bigquery/v2/projects/fixture-project/queries"; r.Method = "POST" },
 		"other-table": func(r *http.Request) { r.URL.Path += "/tables/unlisted" },
@@ -257,6 +261,7 @@ func TestDiscoveryGuardRejectsProviderRequestMutation(t *testing.T) {
 }
 
 func TestDiscoveryIdentityRotationInAuthenticationMiddleware(t *testing.T) {
+	t.Parallel()
 	calls := 0
 	c, p, _, _ := discoveryFixtureClient(t, rt(func(*http.Request) (*http.Response, error) { calls++; return response(`{}`), nil }))
 	c.provider = discoveryMutatingProvider{p, func(*http.Request) { p.identity.Principal.Generation = "changed-before-dispatch" }}
@@ -266,6 +271,7 @@ func TestDiscoveryIdentityRotationInAuthenticationMiddleware(t *testing.T) {
 }
 
 func TestDiscoveryConfigAndEnvelopeBounds(t *testing.T) {
+	t.Parallel()
 	dataset, table := discoveryFixture(t, "dataset"), discoveryFixture(t, "table")
 	c, _, _, _ := discoveryFixtureClient(t, rt(func(req *http.Request) (*http.Response, error) {
 		if strings.Contains(req.URL.Path, "/tables/") {
@@ -328,6 +334,7 @@ func (p *discoveryRevokingProvider) Authorize(ctx context.Context, gate http.Rou
 }
 
 func TestDiscoveryConsentWithdrawalDuringDispatchAttestation(t *testing.T) {
+	t.Parallel()
 	calls := 0
 	dataset := discoveryFixture(t, "dataset")
 	c, p, b, _ := discoveryFixtureClient(t, rt(func(*http.Request) (*http.Response, error) { calls++; return response(dataset), nil }))
@@ -339,6 +346,7 @@ func TestDiscoveryConsentWithdrawalDuringDispatchAttestation(t *testing.T) {
 }
 
 func TestDiscoveryConsentWithdrawalDuringDeliveryAttestation(t *testing.T) {
+	t.Parallel()
 	afterTable := false
 	dataset, table := discoveryFixture(t, "dataset"), discoveryFixture(t, "table")
 	c, p, b, _ := discoveryFixtureClient(t, rt(func(req *http.Request) (*http.Response, error) {
@@ -356,6 +364,7 @@ func TestDiscoveryConsentWithdrawalDuringDeliveryAttestation(t *testing.T) {
 }
 
 func TestDiscoveryRegistrySourceIDParity(t *testing.T) {
+	t.Parallel()
 	for _, source := range []string{"fixture--source", "fixture-source-", strings.Repeat("a", 81)} {
 		c, _, _, _ := discoveryFixtureClient(t, rt(func(*http.Request) (*http.Response, error) { t.Fatal("invalid source dispatched"); return nil, nil }))
 		locator := c.locators["fixture-source"]
@@ -407,6 +416,7 @@ func (c *discoveryWorkerClock) Sleep(ctx context.Context, d time.Duration) error
 }
 
 func TestDiscoveryConsentWithdrawalWhilePhysicalWorkerDelayed(t *testing.T) {
+	t.Parallel()
 	var calls atomic.Int32
 	dataset := discoveryFixture(t, "dataset")
 	c, _, b, clock := discoveryFixtureClient(t, rt(func(*http.Request) (*http.Response, error) { calls.Add(1); return response(dataset), nil }))
@@ -439,6 +449,7 @@ func TestDiscoveryConsentWithdrawalWhilePhysicalWorkerDelayed(t *testing.T) {
 }
 
 func TestDiscoveryRecursiveSchemaBounds(t *testing.T) {
+	t.Parallel()
 	for name, schema := range map[string]any{
 		"empty":                   map[string]any{"fields": []any{}},
 		"case-duplicate":          map[string]any{"fields": []any{map[string]any{"name": "a", "type": "STRING"}, map[string]any{"name": "A", "type": "STRING"}}},

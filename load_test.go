@@ -33,6 +33,7 @@ func loadResponse(req *http.Request, status int, body string) *http.Response {
 }
 
 func TestLoadWriterCreatesLocationPinnedDatasetAndAtomicallyLoadsTypedNDJSON(t *testing.T) {
+	t.Parallel()
 	var tableGets, datasetPosts, tablePosts, jobPosts, jobGets int
 	var uploadBody string
 	var jobID string
@@ -117,6 +118,7 @@ func TestLoadWriterCreatesLocationPinnedDatasetAndAtomicallyLoadsTypedNDJSON(t *
 }
 
 func TestLoadWriterRejectsExistingTablesAndMismatchedDatasetLocation(t *testing.T) {
+	t.Parallel()
 	transport := loadRoundTripper(func(req *http.Request) (*http.Response, error) {
 		if strings.Contains(req.URL.Path, "/datasets/demo/tables/People") {
 			return loadResponse(req, http.StatusOK, `{"tableReference":{"projectId":"demodb","datasetId":"demo","tableId":"People"}}`), nil
@@ -139,6 +141,7 @@ func TestLoadWriterRejectsExistingTablesAndMismatchedDatasetLocation(t *testing.
 }
 
 func TestReceiptFromJobRequiresExactJobAndDestinationIdentity(t *testing.T) {
+	t.Parallel()
 	writer := &LoadWriter{projectID: "demodb", datasetID: "demo", location: "US"}
 	valid := &bq.Job{
 		JobReference: &bq.JobReference{ProjectId: "demodb", JobId: "job-1", Location: "US"},
@@ -175,6 +178,7 @@ func TestReceiptFromJobRequiresExactJobAndDestinationIdentity(t *testing.T) {
 }
 
 func TestLoadWriterRefusesTablesItDidNotCreate(t *testing.T) {
+	t.Parallel()
 	requests := 0
 	writer, err := NewLoadWriter(context.Background(), LoadConfig{ProjectID: "demodb", DatasetID: "demo", Location: "US", HTTPClient: &http.Client{Transport: loadRoundTripper(func(req *http.Request) (*http.Response, error) {
 		requests++
@@ -196,6 +200,7 @@ func TestLoadWriterRefusesTablesItDidNotCreate(t *testing.T) {
 }
 
 func TestSetConstraintsFencesPatchWithETagAndForgetsStaleOwnership(t *testing.T) {
+	t.Parallel()
 	var writer *LoadWriter
 	getRequests, patchRequests := 0, 0
 	transport := loadRoundTripper(func(req *http.Request) (*http.Response, error) {
@@ -234,6 +239,7 @@ func TestSetConstraintsFencesPatchWithETagAndForgetsStaleOwnership(t *testing.T)
 }
 
 func TestLoadWriterBlocksResumableLocationBeforeSendingCredentialsOrRows(t *testing.T) {
+	t.Parallel()
 	var writer *LoadWriter
 	var calls []string
 	var authenticatedCalls []string
@@ -273,6 +279,7 @@ func TestLoadWriterBlocksResumableLocationBeforeSendingCredentialsOrRows(t *test
 }
 
 func TestRecoverLoadUsesSameJobAfterCanceledUploadAndPollsRunning(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithCancel(context.Background())
 	var writer *LoadWriter
 	var insertedJobID string

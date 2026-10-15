@@ -99,11 +99,8 @@ func parseValue(d *json.Decoder, depth int) (any, error) {
 		m := map[string]any{}
 		for d.More() {
 			k, e := d.Token()
-			if e != nil {
-				return nil, fail("malformed_wire")
-			}
 			s, ok := k.(string)
-			if !ok {
+			if e != nil || !ok {
 				return nil, fail("malformed_wire")
 			}
 			if _, exists := m[s]; exists {

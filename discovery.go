@@ -87,6 +87,12 @@ var discoverySourceID = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
 var discoveryFieldID = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]{0,299}$`)
 var discoveryLocation = regexp.MustCompile(`^(US|EU|[a-z][a-z0-9]*(-[a-z0-9]+)+)$`)
 
+var (
+	discoveryObjectFn        = object
+	discoveryMarshalFn       = json.Marshal
+	discoveryCanonicalJSONFn = CanonicalJSON
+)
+
 func NewDiscoveryClient(cfg DiscoveryConfig) (*DiscoveryClient, error) {
 	if len(cfg.Allowlist) < 1 || len(cfg.Allowlist) > 16 || cfg.Authorize == nil || cfg.Provider == nil || cfg.Transport == nil || (cfg.EvidenceKind != "provider-metadata" && cfg.EvidenceKind != "synthetic-fixture") {
 		return nil, fail("invalid_input")
@@ -150,7 +156,7 @@ func (c *DiscoveryClient) Discover(ctx context.Context, sourceID string, bounds 
 	if e = core.checkIdentity(ctx, b.Principal); e != nil {
 		return PublicDiscovery{}, e
 	}
-	dataset, e := object(d)
+	dataset, e := discoveryObjectFn(d)
 	if e != nil {
 		return PublicDiscovery{}, e
 	}
@@ -172,7 +178,7 @@ func (c *DiscoveryClient) Discover(ctx context.Context, sourceID string, bounds 
 	if e != nil {
 		return PublicDiscovery{}, e
 	}
-	table, e := object(t)
+	table, e := discoveryObjectFn(t)
 	if e != nil {
 		return PublicDiscovery{}, e
 	}
@@ -200,16 +206,16 @@ func (c *DiscoveryClient) Discover(ctx context.Context, sourceID string, bounds 
 		return PublicDiscovery{}, e
 	}
 	o := PublicDiscovery{Format: "ovdb-bigquery-observation/draft-1", SourceID: l.SourceID, SourceProject: l.SourceProject, DatasetID: l.DatasetID, TableID: l.TableID, Location: location, ObjectType: typ, ObservedAt: c.clock.Now().UTC().Truncate(time.Second).Format(time.RFC3339), Schema: schema, Projection: "partial-public-schema", Provenance: DiscoveryProvenance{Kind: c.evidenceKind, Method: "datasets.get+tables.get", Verifier: "public-projection-review-v1"}}
-	raw, e := json.Marshal(o)
+	raw, e := discoveryMarshalFn(o)
 	if e != nil {
 		return PublicDiscovery{}, fail("invalid_input")
 	}
-	canonical, e := CanonicalJSON(raw)
+	canonical, e := discoveryCanonicalJSONFn(raw)
 	if e != nil {
 		return PublicDiscovery{}, e
 	}
 	o.SHA256 = "sha256:" + hashBytes(canonical)
-	raw, e = json.Marshal(o)
+	raw, e = discoveryMarshalFn(o)
 	if e != nil || len(raw) > 64<<10 {
 		return PublicDiscovery{}, fail("response_limit")
 	}

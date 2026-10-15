@@ -57,6 +57,7 @@ func sourceTestRow(values ...any) map[string]any {
 }
 
 func TestReadOnlySourceSchemaAndPages(t *testing.T) {
+	t.Parallel()
 	var requests []string
 	page := 0
 	db := sourceTestDatabase(t, rt(func(req *http.Request) (*http.Response, error) {
@@ -130,6 +131,7 @@ func TestReadOnlySourceSchemaAndPages(t *testing.T) {
 }
 
 func TestReadOnlySourceRejectsUnsupportedRowsBeforeData(t *testing.T) {
+	t.Parallel()
 	dataRequests := 0
 	db := sourceTestDatabase(t, rt(func(req *http.Request) (*http.Response, error) {
 		if strings.HasSuffix(req.URL.Path, "/data") {
@@ -147,6 +149,7 @@ func TestReadOnlySourceRejectsUnsupportedRowsBeforeData(t *testing.T) {
 }
 
 func TestReadOnlySourcePageFailuresAreNotEOF(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name          string
 		first, second string
@@ -206,6 +209,7 @@ func TestReadOnlySourcePageFailuresAreNotEOF(t *testing.T) {
 }
 
 func TestReadOnlySourceMetadataInventoryAndView(t *testing.T) {
+	t.Parallel()
 	requests := 0
 	db := sourceTestDatabase(t, rt(func(req *http.Request) (*http.Response, error) {
 		requests++
@@ -242,6 +246,7 @@ func TestReadOnlySourceMetadataInventoryAndView(t *testing.T) {
 }
 
 func TestReadOnlySourceTransportAllowsOnlyMetadataAndTabledataGet(t *testing.T) {
+	t.Parallel()
 	requests := 0
 	guard := sourceTransport{base: rt(func(*http.Request) (*http.Response, error) { requests++; return response(`{}`), nil }), project: "fixture-project", dataset: "fixture_dataset"}
 	for _, methodAndURL := range []struct{ method, url string }{
@@ -264,6 +269,7 @@ func TestReadOnlySourceTransportAllowsOnlyMetadataAndTabledataGet(t *testing.T) 
 }
 
 func TestReadOnlySourceScalarFidelityAndPreflight(t *testing.T) {
+	t.Parallel()
 	fields := []Field{
 		{Name: "n", Type: "BIGNUMERIC", Mode: "NULLABLE"},
 		{Name: "f", Type: "FLOAT64", Mode: "NULLABLE"},
@@ -298,6 +304,7 @@ func TestReadOnlySourceScalarFidelityAndPreflight(t *testing.T) {
 }
 
 func TestReadOnlySourceCancellationAndLimits(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	requests := 0
@@ -324,6 +331,7 @@ func TestReadOnlySourceCancellationAndLimits(t *testing.T) {
 }
 
 func TestReadOnlySourceCumulativeCursorBounds(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name      string
 		limit     func(*SourceLimits)
@@ -384,6 +392,7 @@ func TestReadOnlySourceCumulativeCursorBounds(t *testing.T) {
 }
 
 func TestReadOnlySourceCursorStopsAfterCloseCancellationOrIdentityChange(t *testing.T) {
+	t.Parallel()
 	for _, mode := range []string{"close", "cancel", "principal", "expiry"} {
 		t.Run(mode, func(t *testing.T) {
 			pageCalls := 0
@@ -447,6 +456,7 @@ func TestReadOnlySourceCursorStopsAfterCloseCancellationOrIdentityChange(t *test
 }
 
 func TestReadOnlySourceEmptyInventoryAndTable(t *testing.T) {
+	t.Parallel()
 	dataCalls := 0
 	db := sourceTestDatabase(t, rt(func(req *http.Request) (*http.Response, error) {
 		switch {

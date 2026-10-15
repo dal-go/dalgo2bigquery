@@ -36,6 +36,8 @@ func errorCode(err error) string {
 	}
 	return err.Error()
 }
+
+// Not parallel: runs entire shared corpus (168 scenarios) that consumes dependencySlots.
 func TestSharedCorpus(t *testing.T) {
 	defer writeHTTPReport(t)
 	raw, e := os.ReadFile("testdata/contract/manifest.json")
@@ -149,6 +151,7 @@ func TestSharedCorpus(t *testing.T) {
 	}
 }
 func TestRawBoundsAndSurrogates(t *testing.T) {
+	t.Parallel()
 	for _, raw := range [][]byte{[]byte(`{"x":1,"x":2}`), []byte(`[] []`), []byte(`"\ud800"`), []byte(`"\udfff"`), {0xff}} {
 		if _, e := ParseJSON(raw, 100); e == nil {
 			t.Fatalf("accepted invalid wire %q", raw)
@@ -167,6 +170,7 @@ func TestRawBoundsAndSurrogates(t *testing.T) {
 	}
 }
 func TestNamedPayloadDoesNotRecursivelyRemoveDigest(t *testing.T) {
+	t.Parallel()
 	base := `{"version":1,"sourceDigest":"s","projection":["n"],"where":{"digest":"bound"},"order":[],"limit":1,"parameters":[],"sql":"s","digest":"ignored"}`
 	a, _, e := HashPayload("ReadPlan", []byte(base))
 	if e != nil {
@@ -182,6 +186,7 @@ func TestNamedPayloadDoesNotRecursivelyRemoveDigest(t *testing.T) {
 	}
 }
 func TestOriginalExecutionDeadline(t *testing.T) {
+	t.Parallel()
 	start := time.Date(2026, 10, 5, 0, 0, 0, 0, time.UTC)
 	deadline := start.Add(120 * time.Second)
 	at119 := start.Add(119 * time.Second)
@@ -202,6 +207,7 @@ func TestOriginalExecutionDeadline(t *testing.T) {
 }
 
 func TestNormalizeScalarUnicodeBoundary(t *testing.T) {
+	t.Parallel()
 	for _, raw := range [][]byte{{0xff}, {0xed, 0xa0, 0x80}, {0xf0, 0x9f, 0x92}} {
 		if _, e := NormalizeScalar(Field{Type: "STRING"}, string(raw)); errorCode(e) != "malformed_wire" {
 			t.Fatalf("invalid UTF-8 accepted: %v", e)
@@ -215,6 +221,7 @@ func TestNormalizeScalarUnicodeBoundary(t *testing.T) {
 	}
 }
 func TestNormalizeScalarFloatLexicalBoundary(t *testing.T) {
+	t.Parallel()
 	for _, s := range []string{"0x1p2", "1_0", "0x10", " 1", "1 ", "", "+", ".", "1e", "NaN", "Infinity"} {
 		if _, e := NormalizeScalar(Field{Type: "FLOAT64"}, s); errorCode(e) != "unsupported_value" {
 			t.Fatalf("accepted invalid decimal lexeme %q: %v", s, e)

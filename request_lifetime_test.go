@@ -41,6 +41,8 @@ func fillDependencySlots(t *testing.T, n int) func() {
 	t.Cleanup(release)
 	return release
 }
+
+// Not parallel: manipulates shared package-level dependencySlots channel.
 func TestWorkerAdmissionRefusalReleasesRunMarker(t *testing.T) {
 	waitDependenciesIdle(t)
 	release := fillDependencySlots(t, cap(dependencySlots))
@@ -73,6 +75,8 @@ func TestWorkerAdmissionRefusalReleasesRunMarker(t *testing.T) {
 		t.Fatal("closed recovery request retained marker")
 	}
 }
+
+// Not parallel: manipulates shared package-level dependencySlots channel.
 func TestStatusRecoversAfterActualWorkerAdmissionRefusal(t *testing.T) {
 	c, _, _, _ := dynamicClient(t, NewMemoryLedger(), "3000")
 	run, e := approvedRun(t, c, shortBounds())
@@ -133,6 +137,8 @@ func (b *boundedCloseBody) Close() error {
 		return fail("local_stopped")
 	}
 }
+
+// Not parallel: manipulates shared package-level dependencySlots channel.
 func TestEOFRequiresPhysicalCloseBeforeNextRequest(t *testing.T) {
 	waitDependenciesIdle(t)
 	id := "r2-eof-close"
@@ -170,6 +176,8 @@ func TestEOFRequiresPhysicalCloseBeforeNextRequest(t *testing.T) {
 		t.Fatal("Close repeated")
 	}
 }
+
+// Not parallel: manipulates shared package-level dependencySlots channel.
 func TestStatusEOFCloseTimeoutPreservesRecoveryGate(t *testing.T) {
 	c, _, _, _ := dynamicClient(t, NewMemoryLedger(), "3000")
 	run, e := approvedRun(t, c, shortBounds())

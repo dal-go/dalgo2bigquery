@@ -91,8 +91,12 @@ func (d *sourceDatabase) identity(ctx context.Context) (Principal, error) {
 	return i.Principal, nil
 }
 
+var sourceGetFn = func(d *sourceDatabase, ctx context.Context, principal Principal, call func(sdkAPI) error) (map[string]any, int64, error) {
+	return d.getWithBytes(ctx, principal, call)
+}
+
 func (d *sourceDatabase) get(ctx context.Context, principal Principal, call func(sdkAPI) error) (map[string]any, error) {
-	m, _, e := d.getWithBytes(ctx, principal, call)
+	m, _, e := sourceGetFn(d, ctx, principal, call)
 	return m, e
 }
 

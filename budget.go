@@ -25,9 +25,12 @@ func positiveBytes(s string) (int64, error) {
 	}
 	return n, nil
 }
+
+var randRead = rand.Read
+
 func opaqueID() string {
 	b := make([]byte, 24)
-	if _, e := rand.Read(b); e != nil {
+	if _, e := randRead(b); e != nil {
 		panic("secure random unavailable")
 	}
 	return hex.EncodeToString(b)

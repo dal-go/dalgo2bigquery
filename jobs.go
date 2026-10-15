@@ -7,6 +7,22 @@ import (
 	"time"
 )
 
+var loadRunFn = func(c *Client, id string) (runRecord, error) { return c.loadRun(id) }
+var mutateRunContextFn = func(c *Client, ctx context.Context, id string, fn func(*runRecord) error) error {
+	return c.mutateRunContext(ctx, id, fn)
+}
+var ledgerLeaseFn = func(l Ledger, ctx context.Context, id string) (func(), error) { return l.lease(ctx, id) }
+var queryRequestFn = queryRequest
+var reauthorizeFn = func(c *Client, ctx context.Context, plan ReadPlan, policy string) error {
+	return c.reauthorize(ctx, plan, policy)
+}
+var callFn = func(c *Client, ctx context.Context, s *operationScope, principal *Principal, control bool, fn func(sdkAPI) error) (any, error) {
+	return c.call(ctx, s, principal, control, fn)
+}
+var preparationFn = func(c *Client, ctx context.Context, scope *operationScope, control bool) (context.Context, context.CancelFunc, error) {
+	return c.preparation(ctx, scope, control)
+}
+
 func parseJob(v any) (JobRef, error) {
 	m, e := object(v)
 	if e != nil {
@@ -113,7 +129,7 @@ func (c *Client) Execute(ctx context.Context, a Approval) (*Run, error) {
 		return nil, e
 	}
 	run := newRun(c, callerCtx, id)
-	release, e := c.ledger.lease(ctx, id)
+	release, e := ledgerLeaseFn(c.ledger, ctx, id)
 	if e != nil {
 		return run, e
 	}
@@ -129,11 +145,11 @@ func (c *Client) Execute(ctx context.Context, a Approval) (*Run, error) {
 		})
 		return run, e
 	}
-	preparedCtx, preparedCancel, e := c.preparation(ctx, scope, false)
+	preparedCtx, preparedCancel, e := preparationFn(c, ctx, scope, false)
 	if e != nil {
 		return beforeSubmit(e)
 	}
-	e = c.reauthorize(preparedCtx, record.Preview.Plan, record.Preview.PolicyDigest)
+	e = reauthorizeFn(c, preparedCtx, record.Preview.Plan, record.Preview.PolicyDigest)
 	preparedCancel()
 	if e != nil {
 		return beforeSubmit(e)
@@ -160,26 +176,26 @@ func (c *Client) Execute(ctx context.Context, a Approval) (*Run, error) {
 	if obs.Digest != record.Preview.Observation.Digest {
 		return beforeSubmit(fail("source_changed"))
 	}
-	preparedCtx, preparedCancel, e = c.preparation(ctx, scope, false)
+	preparedCtx, preparedCancel, e = preparationFn(c, ctx, scope, false)
 	if e != nil {
 		return beforeSubmit(e)
 	}
-	e = c.reauthorize(preparedCtx, record.Preview.Plan, record.Preview.PolicyDigest)
+	e = reauthorizeFn(c, preparedCtx, record.Preview.Plan, record.Preview.PolicyDigest)
 	preparedCancel()
 	if e != nil {
 		return beforeSubmit(e)
 	}
-	req, e := queryRequest(record.Preview.Plan, record.Preview.Execution, record.Preview.Bounds, obs.Location, false)
+	req, e := queryRequestFn(record.Preview.Plan, record.Preview.Execution, record.Preview.Bounds, obs.Location, false)
 	if e != nil {
 		return beforeSubmit(e)
 	}
-	e = c.mutateRunContext(ctx, id, func(r *runRecord) error { r.Receipt.State = "submitting"; return nil })
+	e = mutateRunContextFn(c, ctx, id, func(r *runRecord) error { r.Receipt.State = "submitting"; return nil })
 	if e != nil {
 		return run, e
 	}
 	scope.submit = true
 	scope.result = true
-	raw, e := c.call(ctx, scope, &record.Receipt.Principal, false, func(api sdkAPI) error {
+	raw, e := callFn(c, ctx, scope, &record.Receipt.Principal, false, func(api sdkAPI) error {
 		_, e := api.service.Jobs.Query(record.Preview.Execution.JobProject, req).Context(api.ctx).Do()
 		return e
 	})
@@ -243,25 +259,25 @@ func (c *Client) Status(ctx context.Context, job JobRef) (JobStatus, error) {
 	if e != nil {
 		return JobStatus{}, e
 	}
-	release, e := c.ledger.lease(ctx, r.Receipt.RunID)
+	release, e := ledgerLeaseFn(c.ledger, ctx, r.Receipt.RunID)
 	if e != nil {
 		return JobStatus{}, e
 	}
 	defer release()
-	r, e = c.loadRun(r.Receipt.RunID)
+	r, e = loadRunFn(c, r.Receipt.RunID)
 	if e != nil {
 		return JobStatus{}, e
 	}
 	scope := runScope(r)
-	ctx, finish, e := c.preparation(ctx, scope, true)
+	ctx, finish, e := preparationFn(c, ctx, scope, true)
 	if e != nil {
 		return JobStatus{}, e
 	}
 	defer finish()
-	if e = c.reauthorize(ctx, r.Preview.Plan, r.Preview.PolicyDigest); e != nil {
+	if e = reauthorizeFn(c, ctx, r.Preview.Plan, r.Preview.PolicyDigest); e != nil {
 		return JobStatus{}, e
 	}
-	raw, e := c.call(ctx, scope, &r.ActivePrincipal, true, func(api sdkAPI) error {
+	raw, e := callFn(c, ctx, scope, &r.ActivePrincipal, true, func(api sdkAPI) error {
 		_, e := api.service.Jobs.Get(job.ProjectID, job.JobID).Location(job.Location).Context(api.ctx).Do()
 		return e
 	})
@@ -324,7 +340,7 @@ func (c *Client) Status(ctx context.Context, job JobRef) (JobStatus, error) {
 			}
 		}
 	}
-	e = c.mutateRunContext(ctx, r.Receipt.RunID, func(rr *runRecord) error {
+	e = mutateRunContextFn(c, ctx, r.Receipt.RunID, func(rr *runRecord) error {
 		if state == "DONE" {
 			if rr.Receipt.State == "cancel_requested" && result.State == "completed" {
 				result.Warnings = append(result.Warnings, "completed_before_cancel")
@@ -346,26 +362,26 @@ func (c *Client) CancelJob(ctx context.Context, job JobRef) (CancelResult, error
 	if e != nil {
 		return CancelResult{}, e
 	}
-	release, e := c.ledger.lease(ctx, r.Receipt.RunID)
+	release, e := ledgerLeaseFn(c.ledger, ctx, r.Receipt.RunID)
 	if e != nil {
 		return CancelResult{}, e
 	}
 	defer release()
-	r, e = c.loadRun(r.Receipt.RunID)
+	r, e = loadRunFn(c, r.Receipt.RunID)
 	if e != nil {
 		return CancelResult{}, e
 	}
 	scope := runScope(r)
-	ctx, finish, e := c.preparation(ctx, scope, true)
+	ctx, finish, e := preparationFn(c, ctx, scope, true)
 	if e != nil {
 		return CancelResult{}, e
 	}
 	defer finish()
-	if e = c.reauthorize(ctx, r.Preview.Plan, r.Preview.PolicyDigest); e != nil {
+	if e = reauthorizeFn(c, ctx, r.Preview.Plan, r.Preview.PolicyDigest); e != nil {
 		return CancelResult{}, e
 	}
 	scope.submit = true
-	raw, e := c.call(ctx, scope, &r.ActivePrincipal, true, func(api sdkAPI) error {
+	raw, e := callFn(c, ctx, scope, &r.ActivePrincipal, true, func(api sdkAPI) error {
 		_, e := api.service.Jobs.Cancel(job.ProjectID, job.JobID).Location(job.Location).Context(api.ctx).Do()
 		return e
 	})
@@ -388,7 +404,7 @@ func (c *Client) CancelJob(ctx context.Context, job JobRef) (CancelResult, error
 	if e != nil || ref != job {
 		return CancelResult{job, "unknown"}, fail("cancellation_unknown")
 	}
-	e = c.mutateRunContext(ctx, r.Receipt.RunID, func(rr *runRecord) error {
+	e = mutateRunContextFn(c, ctx, r.Receipt.RunID, func(rr *runRecord) error {
 		if rr.Receipt.State != "completed" && rr.Receipt.State != "failed" && rr.Receipt.State != "cancelled" {
 			rr.Receipt.State = "cancel_requested"
 		}

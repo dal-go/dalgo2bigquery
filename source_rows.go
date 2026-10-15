@@ -143,7 +143,7 @@ func (c *sourceRowCursor) loadPage() error {
 		return fail("response_limit")
 	}
 	previous := c.token
-	m, bytes, e := c.db.getWithBytes(c.ctx, c.principal, func(api sdkAPI) error {
+	m, bytes, e := sourceGetFn(c.db, c.ctx, c.principal, func(api sdkAPI) error {
 		call := api.service.Tabledata.List(c.db.project, c.db.dataset, c.name).MaxResults(int64(c.db.limits.PageSize)).FormatOptionsUseInt64Timestamp(true)
 		if previous != "" {
 			call = call.PageToken(previous)
@@ -217,6 +217,8 @@ func (c *sourceRowCursor) verifyFinal() error {
 	return c.db.client().checkIdentity(c.ctx, c.principal)
 }
 
+var normalizeScalarFn = NormalizeScalar
+
 func sourceDecodeRow(raw any, fields []Field) (dbschema.SourceRow, error) {
 	m, e := object(raw)
 	if e != nil {
@@ -236,7 +238,7 @@ func sourceDecodeRow(raw any, fields []Field) (dbschema.SourceRow, error) {
 		if !ok {
 			return dbschema.SourceRow{}, fail("malformed_wire")
 		}
-		normalized, e := NormalizeScalar(fields[i], v)
+		normalized, e := normalizeScalarFn(fields[i], v)
 		if e != nil {
 			return dbschema.SourceRow{}, e
 		}

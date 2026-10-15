@@ -25,6 +25,7 @@ func approvedRun(t *testing.T, c *Client, b Bounds) (*Run, error) {
 	return c.Execute(context.Background(), a)
 }
 func TestUndeliveredRecordsetsStayPrivateAndDetached(t *testing.T) {
+	t.Parallel()
 	for _, change := range []string{"grant", "policy", "maxrows", "deadline"} {
 		t.Run(change, func(t *testing.T) {
 			c, provider, _, _ := dynamicClient(t, NewMemoryLedger(), "3000")
@@ -103,6 +104,8 @@ func slowPrepare(original Prepare, cooperative bool, completed chan<- struct{}) 
 		return original(ctx)
 	}
 }
+
+// Not parallel: real-time timing sensitivity on requirePrompt (200ms bound).
 func TestActualTimePreparationBoundsAndNoLateSubmission(t *testing.T) {
 	for _, phase := range []string{"preview", "execute", "resume", "status", "cancel", "rebind"} {
 		for _, cooperative := range []bool{true, false} {
@@ -181,6 +184,7 @@ func TestActualTimePreparationBoundsAndNoLateSubmission(t *testing.T) {
 	}
 }
 
+// Not parallel: real-time timing sensitivity on requirePrompt (200ms bound).
 func TestActualTimeConfiguredPreparationBoundsAndNoPaidDispatch(t *testing.T) {
 	for _, cooperative := range []bool{true, false} {
 		t.Run(map[bool]string{true: "cooperative", false: "ignores"}[cooperative], func(t *testing.T) {
@@ -215,6 +219,8 @@ func (p delayedProvider) Authorize(ctx context.Context, base http.RoundTripper) 
 	close(p.done)
 	return p.original.Authorize(ctx, base)
 }
+
+// Not parallel: real-time timing sensitivity on requirePrompt (200ms bound).
 func TestActualTimeProviderCannotDispatchAfterReturn(t *testing.T) {
 	c, _, _, paid := dynamicClient(t, NewMemoryLedger(), "3000")
 	plan, _ := Compile(testProfile(t), testQuery())
@@ -235,6 +241,8 @@ func TestActualTimeProviderCannotDispatchAfterReturn(t *testing.T) {
 		t.Fatal("late provider gained authority")
 	}
 }
+
+// Not parallel: real-time timing sensitivity on requirePrompt (200ms bound).
 func TestActualTimePaidTransportRetainsUnknownAndNoLateWrites(t *testing.T) {
 	c, _, _, _ := dynamicClient(t, NewMemoryLedger(), "3000")
 	original := c.transport
@@ -272,6 +280,8 @@ func TestActualTimePaidTransportRetainsUnknownAndNoLateWrites(t *testing.T) {
 		t.Fatal("late result mutation/replay")
 	}
 }
+
+// Not parallel: real-time timing sensitivity on requirePrompt (200ms bound).
 func TestLedgerReservationWaitHonorsOriginalDeadline(t *testing.T) {
 	l, e := NewFileLedger(filepath.Join(t.TempDir(), "private-ledger"))
 	if e != nil {
@@ -347,6 +357,8 @@ func (b *waitingBody) Read(p []byte) (int, error) {
 
 // A fast Close may not actually interrupt an injected Read.
 func (b *waitingBody) Close() error { return nil }
+
+// Not parallel: real-time timing sensitivity on requirePrompt (200ms bound).
 func TestActualTimeControlBodyRetainsPhysicalRunGate(t *testing.T) {
 	c, _, _, _ := dynamicClient(t, NewMemoryLedger(), "3000")
 	run, e := approvedRun(t, c, shortBounds())
@@ -417,10 +429,13 @@ func (p delayedAuthProvider) Authorize(ctx context.Context, base http.RoundTripp
 		return base.RoundTrip(req)
 	}), e
 }
+
+// Not parallel: real-time timing sensitivity on requirePrompt (200ms bound).
 func TestActualTimeLateAuthenticationCannotDispatch(t *testing.T) {
 	testActualTimeLateAuthenticationCannotDispatch(t, false)
 }
 
+// Not parallel: real-time timing sensitivity on requirePrompt (200ms bound).
 func TestActualTimeLateAuthenticationCannotDispatchAfterCallerDelay(t *testing.T) {
 	testActualTimeLateAuthenticationCannotDispatch(t, true)
 }
@@ -528,6 +543,8 @@ func testActualTimeLateAuthenticationCannotDispatch(t *testing.T, callerDelayed 
 		t.Fatal("late middleware submitted or wrote state")
 	}
 }
+
+// Not parallel: fills shared package-level dependencySlots channel capacity.
 func TestAbandonedDependenciesHaveFiniteWorkerBound(t *testing.T) {
 	release := make(chan struct{})
 	started := make(chan struct{}, cap(dependencySlots))

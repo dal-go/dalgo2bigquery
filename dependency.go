@@ -11,7 +11,7 @@ import (
 // A finite ignored-cancellation dependency may outlive its caller. It owns no
 // continuation authority. This process-wide bound prevents repeated local calls
 // from accumulating unlimited abandoned workers; it is not a job/session limit.
-var dependencySlots = make(chan struct{}, 64)
+var dependencySlots = make(chan struct{}, 128)
 
 type dependencyResult[T any] struct {
 	value T

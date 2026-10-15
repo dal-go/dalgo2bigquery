@@ -33,6 +33,7 @@ func forbidSnapshotWork(c *Client) {
 	c.transport = rt(func(*http.Request) (*http.Response, error) { panic("snapshot dispatched HTTP") })
 }
 func TestSnapshotRefreshesTerminalBillingAndControlBytes(t *testing.T) {
+	t.Parallel()
 	c, run, previous, cursor := snapshotRun(t, NewMemoryLedger())
 	c.transport = rt(func(*http.Request) (*http.Response, error) {
 		return response(`{"jobReference":{"projectId":"job-project","jobId":"j","location":"EU"},"status":{"state":"DONE"},"statistics":{"query":{"totalBytesBilled":"42"}}}`), nil
@@ -59,6 +60,7 @@ func TestSnapshotRefreshesTerminalBillingAndControlBytes(t *testing.T) {
 	}
 }
 func TestSnapshotPreservesCancelStateAndPartialOutcome(t *testing.T) {
+	t.Parallel()
 	for _, partial := range []bool{false, true} {
 		t.Run(map[bool]string{false: "accepted", true: "partial-error"}[partial], func(t *testing.T) {
 			c, run, previous, cursor := snapshotRun(t, NewMemoryLedger())
@@ -105,6 +107,7 @@ func TestSnapshotPreservesCancelStateAndPartialOutcome(t *testing.T) {
 	}
 }
 func TestSnapshotAfterExpiryAndWithoutIssuedCursor(t *testing.T) {
+	t.Parallel()
 	c, run, previous, cursor := snapshotRun(t, NewMemoryLedger())
 	c.clock.(*fakeClock).advance(time.Duration(previous.Bounds.WallMs+1) * time.Millisecond)
 	forbidSnapshotWork(c)
@@ -134,6 +137,7 @@ func TestSnapshotAfterExpiryAndWithoutIssuedCursor(t *testing.T) {
 	}
 }
 func TestSnapshotRejectsForgedImmutableAuthority(t *testing.T) {
+	t.Parallel()
 	c, _, original, _ := snapshotRun(t, NewMemoryLedger())
 	forbidSnapshotWork(c)
 	edits := map[string]func(*Receipt){
@@ -158,6 +162,7 @@ func TestSnapshotRejectsForgedImmutableAuthority(t *testing.T) {
 	}
 }
 func TestSnapshotDefensiveCopiesAndPrivateFileUnchanged(t *testing.T) {
+	t.Parallel()
 	dir := filepath.Join(t.TempDir(), "ledger")
 	ledger, e := NewFileLedger(dir)
 	if e != nil {
@@ -204,6 +209,7 @@ func TestSnapshotDefensiveCopiesAndPrivateFileUnchanged(t *testing.T) {
 	}
 }
 func TestSnapshotCancellationAndConcurrentControl(t *testing.T) {
+	t.Parallel()
 	ledger := NewMemoryLedger()
 	c, run, previous, cursor := snapshotRun(t, ledger)
 	ctx, cancel := context.WithCancel(context.Background())

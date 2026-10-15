@@ -59,6 +59,7 @@ func metadataResponse(req *http.Request) (*http.Response, error) {
 }
 
 func TestObserveConfiguredMetadataOnly(t *testing.T) {
+	t.Parallel()
 	var requests []string
 	c, _, clock, digest := configuredObservationClient(t, func(req *http.Request) (*http.Response, error) {
 		if req.Method != "GET" || req.URL.Host != "bigquery.googleapis.com" || req.Body != nil {
@@ -81,6 +82,7 @@ func TestObserveConfiguredMetadataOnly(t *testing.T) {
 }
 
 func TestObserveConfiguredDatasetKinds(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name, member, wantError string
 		wantCalls               int
@@ -119,6 +121,7 @@ func TestObserveConfiguredDatasetKinds(t *testing.T) {
 }
 
 func TestObserveConfiguredRejectsBeforeDispatch(t *testing.T) {
+	t.Parallel()
 	for _, name := range []string{"unknown-source", "zero-bounds", "oversized-bounds", "expired", "read-denied", "invalid-principal", "cancelled"} {
 		t.Run(name, func(t *testing.T) {
 			var calls atomic.Int32
@@ -159,6 +162,7 @@ func TestObserveConfiguredRejectsBeforeDispatch(t *testing.T) {
 }
 
 func TestObserveConfiguredResponseBounds(t *testing.T) {
+	t.Parallel()
 	for _, cumulative := range []bool{false, true} {
 		t.Run(map[bool]string{false: "per-response", true: "cumulative"}[cumulative], func(t *testing.T) {
 			var calls atomic.Int32
@@ -183,6 +187,7 @@ func TestObserveConfiguredResponseBounds(t *testing.T) {
 }
 
 func TestObserveConfiguredWallDeadlineSpansRequests(t *testing.T) {
+	t.Parallel()
 	var calls atomic.Int32
 	var clock *fakeClock
 	c, _, fake, digest := configuredObservationClient(t, func(req *http.Request) (*http.Response, error) {
@@ -200,6 +205,7 @@ func TestObserveConfiguredWallDeadlineSpansRequests(t *testing.T) {
 }
 
 func TestObserveConfiguredHTTPDeadline(t *testing.T) {
+	t.Parallel()
 	var calls atomic.Int32
 	c, _, _, digest := configuredObservationClient(t, func(req *http.Request) (*http.Response, error) {
 		calls.Add(1)
@@ -215,6 +221,7 @@ func TestObserveConfiguredHTTPDeadline(t *testing.T) {
 }
 
 func TestObserveConfiguredRejectsChangedMetadata(t *testing.T) {
+	t.Parallel()
 	for _, name := range []string{"location", "schema", "view"} {
 		t.Run(name, func(t *testing.T) {
 			c, _, _, digest := configuredObservationClient(t, func(req *http.Request) (*http.Response, error) {
@@ -245,6 +252,7 @@ func TestObserveConfiguredRejectsChangedMetadata(t *testing.T) {
 }
 
 func TestObserveConfiguredRechecksAuthentication(t *testing.T) {
+	t.Parallel()
 	for _, expired := range []bool{false, true} {
 		t.Run(map[bool]string{false: "read-denied", true: "expired"}[expired], func(t *testing.T) {
 			var calls atomic.Int32
@@ -273,6 +281,7 @@ func TestObserveConfiguredRechecksAuthentication(t *testing.T) {
 }
 
 func TestObserveRetainsCallerProfileBehavior(t *testing.T) {
+	t.Parallel()
 	var calls atomic.Int32
 	c, _, _, _ := configuredObservationClient(t, func(req *http.Request) (*http.Response, error) {
 		calls.Add(1)

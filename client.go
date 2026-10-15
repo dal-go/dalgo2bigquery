@@ -19,6 +19,11 @@ type Client struct {
 	clock     Clock
 }
 
+var (
+	strconvParseInt = strconv.ParseInt
+	objectFn        = object
+)
+
 func NewClient(cfg Config) (*Client, error) {
 	if cfg.Provider == nil || cfg.Transport == nil || cfg.Ledger == nil || cfg.Prepare == nil || len(cfg.Profiles) < 1 {
 		return nil, fail("invalid_input")
@@ -327,7 +332,7 @@ func sdkParameterValue(typ string, v any) (*bq.QueryParameterValue, error) {
 		if e != nil {
 			return nil, e
 		}
-		micros, e := strconv.ParseInt(cell.Value.(string), 10, 64)
+		micros, e := strconvParseInt(cell.Value.(string), 10, 64)
 		if e != nil {
 			return nil, fail("unsupported_value")
 		}
@@ -347,7 +352,7 @@ func (c *Client) estimate(ctx context.Context, plan ReadPlan, execution Executio
 	if e != nil {
 		return "", e
 	}
-	m, e := object(raw)
+	m, e := objectFn(raw)
 	if e != nil {
 		return "", e
 	}

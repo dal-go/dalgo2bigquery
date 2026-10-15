@@ -38,16 +38,21 @@ func ledgerLock(f *os.File, nonblocking bool) error {
 	}
 	return syscall.Flock(int(f.Fd()), flags)
 }
-func ledgerUnlock(f *os.File) error       { return syscall.Flock(int(f.Fd()), syscall.LOCK_UN) }
-func ledgerSecureTemp(f *os.File) error   { return f.Chmod(0600) }
+func ledgerUnlock(f *os.File) error { return syscall.Flock(int(f.Fd()), syscall.LOCK_UN) }
+
+var ledgerSecureTemp = func(f *os.File) error { return f.Chmod(0600) }
+
 func ledgerReplace(from, to string) error { return os.Rename(from, to) }
+
+var ledgerSync = func(f *os.File) error { return f.Sync() }
+
 func ledgerSyncDir(dir string) error {
 	f, e := os.Open(dir)
 	if e != nil {
 		return fail("invalid_input")
 	}
 	defer f.Close()
-	if e = f.Sync(); e != nil {
+	if e = ledgerSync(f); e != nil {
 		return fail("invalid_input")
 	}
 	return nil

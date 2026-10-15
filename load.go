@@ -33,6 +33,10 @@ const BigqueryScope = "https://www.googleapis.com/auth/bigquery"
 
 var loadIdentifier = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 var loadJobIDPattern = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
+var schemaEqualAPIFn = schemaEqualAPI
+var loadCheckRedirectFn = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+var bqNewServiceFn = bq.NewService
+var waitForLoadAfter = time.After
 
 func validLoadIdentifier(value string) bool {
 	return len(value) <= 1024 && loadIdentifier.MatchString(value)
@@ -113,13 +117,13 @@ func NewLoadWriter(ctx context.Context, cfg LoadConfig) (*LoadWriter, error) {
 		return nil, fail("invalid_input")
 	}
 	client := *cfg.HTTPClient
-	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	client.CheckRedirect = loadCheckRedirectFn
 	baseTransport := client.Transport
 	if baseTransport == nil {
 		baseTransport = http.DefaultTransport
 	}
 	client.Transport = bigQueryOriginTransport{base: baseTransport}
-	service, err := bq.NewService(ctx, option.WithHTTPClient(&client))
+	service, err := bqNewServiceFn(ctx, option.WithHTTPClient(&client))
 	if err != nil {
 		return nil, fail("invalid_input")
 	}
@@ -316,7 +320,7 @@ func (w *LoadWriter) LoadTable(ctx context.Context, tableID string, schema []Fie
 		w.finishTableOperation(tableID, owned, "", true)
 		return LoadReceipt{}, ErrTableOwnershipChanged
 	}
-	if !schemaEqualAPI(schema, table.Schema) {
+	if !schemaEqualAPIFn(schema, table.Schema) {
 		w.finishTableOperation(tableID, owned, "", true)
 		return LoadReceipt{}, fail("destination_schema_changed")
 	}
@@ -408,7 +412,7 @@ func (w *LoadWriter) waitForLoad(ctx context.Context, ref LoadJobRef) (LoadRecei
 		select {
 		case <-ctx.Done():
 			return LoadReceipt{}, unknownLoad(ref)
-		case <-time.After(250 * time.Millisecond):
+		case <-waitForLoadAfter(250 * time.Millisecond):
 		}
 	}
 }

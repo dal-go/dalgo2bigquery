@@ -10,6 +10,7 @@ import (
 )
 
 func TestWindowsLedgerRefusesForeignDACL(t *testing.T) {
+	t.Parallel()
 	dir := filepath.Join(t.TempDir(), "private-ledger")
 	ledger, e := NewFileLedger(dir)
 	if e != nil {
@@ -59,6 +60,7 @@ func TestWindowsLedgerRefusesForeignDACL(t *testing.T) {
 // Explicit file security must match the token user even when Windows' default
 // token owner is an administrator group. Keep exact owner and DACL validation.
 func TestWindowsLedgerCreatedFilesHaveExplicitOwner(t *testing.T) {
+	t.Parallel()
 	dir := filepath.Join(t.TempDir(), "private-ledger")
 	l, e := NewFileLedger(dir)
 	if e != nil {

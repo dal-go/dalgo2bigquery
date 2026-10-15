@@ -315,11 +315,14 @@ func (c *Client) charge(ctx context.Context, s *operationScope, n int64) error {
 func validPrincipal(p Principal) bool {
 	return (p.Kind == "google-user" || p.Kind == "workload") && p.Subject != "" && p.Generation != "" && len(p.Subject) <= 1024 && len(p.Generation) <= 1024
 }
+
+var wireDefaultAttempts = 1
+
 func (c *Client) call(ctx context.Context, s *operationScope, principal *Principal, control bool, fn func(sdkAPI) error) (any, error) {
 	if control && s.controlDeadline.IsZero() {
 		s.controlDeadline = c.clock.Now().Add(15 * time.Second)
 	}
-	attempts := 1
+	attempts := wireDefaultAttempts
 	var last error
 	gate := &dispatchGate{base: c.transport, submit: s.submit, runID: s.runID}
 	for attempt := 0; attempt < attempts; attempt++ {
@@ -397,13 +400,10 @@ func (c *Client) call(ctx context.Context, s *operationScope, principal *Princip
 			if remaining <= 0 {
 				return fail("response_limit")
 			}
-			if previousBefore != nil {
-				return previousBefore()
-			}
-			return nil
+			return previousBefore()
 		}
 		httpClient := &http.Client{Transport: bounded, CheckRedirect: func(*http.Request, []*http.Request) error { return fail("remote_failed") }}
-		service, e := bq.NewService(op, option.WithHTTPClient(httpClient), option.WithLogger(slog.New(slog.NewTextHandler(io.Discard, nil))))
+		service, e := bqNewServiceFn(op, option.WithHTTPClient(httpClient), option.WithLogger(slog.New(slog.NewTextHandler(io.Discard, nil))))
 		if e != nil {
 			cancel()
 			return nil, fail("invalid_input")

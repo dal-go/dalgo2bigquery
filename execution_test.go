@@ -29,6 +29,7 @@ func testQuery() dal.StructuredQuery {
 	return dal.NewQueryBuilder(dal.From(dal.NewCollectionRef("sample", "", nil))).Limit(100).SelectColumns(dal.Column{Expression: dal.NewFieldRef("", "n")})
 }
 func TestCompilerWholeQueryGuard(t *testing.T) {
+	t.Parallel()
 	p := testProfile(t)
 	base := func() dal.IQueryBuilder {
 		return dal.NewQueryBuilder(dal.From(dal.NewCollectionRef("sample", "", nil))).Limit(100)
@@ -82,6 +83,7 @@ func TestCompilerWholeQueryGuard(t *testing.T) {
 	}
 }
 func TestFieldPrecisionAndDiscovery(t *testing.T) {
+	t.Parallel()
 	for _, field := range []Field{{Name: "n", Type: "NUMERIC", Mode: "NULLABLE", Precision: "5", Scale: "2"}, {Name: "n", Type: "BIGNUMERIC", Mode: "NULLABLE", Precision: "5", Scale: "2"}} {
 		if _, e := NormalizeScalar(field, "123.45"); e != nil {
 			t.Fatal(e)
@@ -105,6 +107,7 @@ func TestFieldPrecisionAndDiscovery(t *testing.T) {
 	}
 }
 func TestTypedNullEmptyParameterSerialization(t *testing.T) {
+	t.Parallel()
 	plan := ReadPlan{Parameters: []Parameter{{"p0", "STRING", nil}, {"p1", "STRING", ""}, {"p2", "ARRAY<INT64>", []any{}}}, SQL: "internally compiled"}
 	req, e := queryRequest(plan, Execution{MaximumBytesBilled: "1"}, DefaultBounds(), "EU", false)
 	if e != nil {
@@ -149,7 +152,9 @@ func dynamicClient(t *testing.T, ledger Ledger, budget string) (*Client, *testPr
 		}
 		if req.Method == "POST" {
 			var m map[string]any
-			_ = json.NewDecoder(req.Body).Decode(&m)
+			if req.Body != nil {
+				_ = json.NewDecoder(req.Body).Decode(&m)
+			}
 			if m["dryRun"] == true {
 				return response(`{"totalBytesProcessed":"100"}`), nil
 			}
@@ -177,6 +182,7 @@ func previewFor(t *testing.T, c *Client, budget string) Preview {
 	return p
 }
 func TestFileLedgerConcurrentReservationAndNonce(t *testing.T) {
+	t.Parallel()
 	dir := filepath.Join(t.TempDir(), "private-ledger")
 	l1, e := NewFileLedger(dir)
 	if e != nil {
@@ -243,6 +249,7 @@ func TestFileLedgerConcurrentReservationAndNonce(t *testing.T) {
 	}
 }
 func TestFileLedgerPartialResumeAcrossClient(t *testing.T) {
+	t.Parallel()
 	l, e := NewFileLedger(filepath.Join(t.TempDir(), "private-ledger"))
 	if e != nil {
 		t.Fatal(e)
@@ -287,6 +294,7 @@ func TestFileLedgerPartialResumeAcrossClient(t *testing.T) {
 	}
 }
 func TestApprovalMutationsAndBoundsZeroDispatch(t *testing.T) {
+	t.Parallel()
 	c, _, _, paid := dynamicClient(t, NewMemoryLedger(), "3000")
 	plan, _, _ := c.prepare(context.Background())
 	execution := Execution{"job-project", Principal{"workload", "operator:fixture", "1"}, "1000", "3000"}
@@ -328,6 +336,7 @@ func TestApprovalMutationsAndBoundsZeroDispatch(t *testing.T) {
 	}
 }
 func TestDispatchGateBelowRetryAndAuthentication(t *testing.T) {
+	t.Parallel()
 	calls := 0
 	gate := &dispatchGate{base: rt(func(*http.Request) (*http.Response, error) { calls++; return nil, errors.New("response lost") }), method: "POST", url: apiOrigin + "projects/job-project/queries", bodyDigest: hashBytes([]byte(`{}`))}
 	for i := 0; i < 2; i++ {
@@ -346,6 +355,7 @@ func TestDispatchGateBelowRetryAndAuthentication(t *testing.T) {
 	}
 }
 func TestSDKLoggerAndErrorsDoNotLeak(t *testing.T) {
+	t.Parallel()
 	var buffer strings.Builder
 	old := slog.Default()
 	slog.SetDefault(slog.New(slog.NewTextHandler(&buffer, &slog.HandlerOptions{Level: slog.LevelDebug})))
@@ -365,6 +375,7 @@ func TestSDKLoggerAndErrorsDoNotLeak(t *testing.T) {
 	}
 }
 func TestExecutorNoKeyedOrGenericFallback(t *testing.T) {
+	t.Parallel()
 	c, _, _, paid := dynamicClient(t, NewMemoryLedger(), "3000")
 	p := previewFor(t, c, "3000")
 	a, _ := c.Approve(p, p.ApprovalDigest)
@@ -382,6 +393,7 @@ func TestExecutorNoKeyedOrGenericFallback(t *testing.T) {
 }
 
 func TestPreviewCallerMutationCannotChangeTrustedPlan(t *testing.T) {
+	t.Parallel()
 	c, _, _, paid := dynamicClient(t, NewMemoryLedger(), "3000")
 	p := previewFor(t, c, "3000")
 	original, _ := jsonCopy(p)
@@ -410,6 +422,7 @@ func TestPreviewCallerMutationCannotChangeTrustedPlan(t *testing.T) {
 }
 
 func TestRebindFileLedgerCASAndImmutableProvenance(t *testing.T) {
+	t.Parallel()
 	ledger, e := NewFileLedger(filepath.Join(t.TempDir(), "private-ledger"))
 	if e != nil {
 		t.Fatal(e)
@@ -465,6 +478,7 @@ func TestRebindFileLedgerCASAndImmutableProvenance(t *testing.T) {
 }
 
 func TestEmptyResultPageRequiresCurrentGrantAndIsDeliveredOnce(t *testing.T) {
+	t.Parallel()
 	c, provider, _, _ := dynamicClient(t, NewMemoryLedger(), "3000")
 	original := c.transport
 	c.transport = rt(func(req *http.Request) (*http.Response, error) {

@@ -17,7 +17,12 @@ jobs:
         with:
           go-version: '1.27'
           cache: true
-      - run: go test -race ./...
+      - run: go test -race -covermode=atomic -coverprofile=profile.cov ./...
+      - shell: bash
+        run: |
+          awk '$1 != "mode:" && $3 == 0 { uncovered += $2 } END { if (uncovered > 0) { printf "uncovered statements: %d\n", uncovered; exit 1 } }' profile.cov
+          total=$(go tool cover -func=profile.cov | awk '/^total:/ { gsub(/%/, "", $3); print $3 }')
+          awk -v total="$total" -v min_test_coverage_percent="100" 'BEGIN { if (total + 0 < min_test_coverage_percent + 0) { printf "coverage %s%% is below %s%%\n", total, min_test_coverage_percent; exit 1 } }'
       - run: go vet ./...
       - shell: bash
         run: test -z "$(gofmt -l .)"
