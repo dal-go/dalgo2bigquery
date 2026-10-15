@@ -6,7 +6,6 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -542,19 +541,21 @@ func TestBudget_FileLedger_AdditionalBranches(t *testing.T) {
 		t.Fatalf("expected invalid_input on >64MB session.json, got %v", err)
 	}
 
-	// readState when session.json has non-not-exist error (e.g. symlink rejected by O_NOFOLLOW)
-	if runtime.GOOS != "windows" {
-		symDir := filepath.Join(t.TempDir(), "fl-sym")
-		flSym, err := NewFileLedger(symDir)
-		if err != nil {
-			t.Fatal(err)
-		}
-		target := filepath.Join(t.TempDir(), "target.json")
-		_ = os.WriteFile(target, []byte("{}"), 0600)
-		_ = os.Symlink(target, filepath.Join(symDir, "session.json"))
-		if _, err := flSym.readState(context.Background()); errorCode(err) != "invalid_input" {
-			t.Fatalf("expected invalid_input on symlink session.json, got %v", err)
-		}
+}
+
+// Not parallel: mutates ledgerOpen seam.
+func TestBudget_ReadState_OpenFail(t *testing.T) {
+	fl, err := NewFileLedger(filepath.Join(t.TempDir(), "fl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	orig := ledgerOpen
+	defer func() { ledgerOpen = orig }()
+	ledgerOpen = func(path string, create bool) (*os.File, error) {
+		return nil, errors.New("simulated open error")
+	}
+	if _, err := fl.readState(context.Background()); errorCode(err) != "invalid_input" {
+		t.Fatalf("expected invalid_input on ledgerOpen error, got %v", err)
 	}
 }
 

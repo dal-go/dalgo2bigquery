@@ -94,10 +94,19 @@ func TestWindowsLedgerCreatedFilesHaveExplicitOwner(t *testing.T) {
 	}
 }
 
-// Not parallel: modifies ledgerSecurity seam.
+// Not parallel: modifies ledgerSecurity and ledgerTokenUser seams.
 func TestWindowsLedgerSecurityFail(t *testing.T) {
-	orig := ledgerSecurity
-	defer func() { ledgerSecurity = orig }()
+	origUser := ledgerTokenUser
+	defer func() { ledgerTokenUser = origUser }()
+	ledgerTokenUser = func() (*windows.Tokenuser, error) {
+		return nil, errors.New("token fail")
+	}
+	if _, _, err := ledgerSecurity(); err == nil {
+		t.Fatal("expected error from ledgerSecurity when token fails")
+	}
+
+	origSec := ledgerSecurity
+	defer func() { ledgerSecurity = origSec }()
 	ledgerSecurity = func() (*windows.SECURITY_DESCRIPTOR, *windows.SID, error) {
 		return nil, nil, errors.New("simulated security fail")
 	}
@@ -111,6 +120,94 @@ func TestWindowsLedgerSecurityFail(t *testing.T) {
 	}
 	if _, err := ledgerTemp(dir); err == nil {
 		t.Fatal("expected error from ledgerTemp when ledgerSecurity fails")
+	}
+
+	f, err := os.CreateTemp(t.TempDir(), "test")
+	if err == nil {
+		defer f.Close()
+		defer os.Remove(f.Name())
+		if ledgerPrivateHandle(f) {
+			t.Fatal("expected false from ledgerPrivateHandle when ledgerSecurity fails")
+		}
+	}
+}
+
+// Not parallel: modifies ledgerGetFileSecurity and ledgerGetFileInfo seams.
+func TestWindowsLedgerSeamFailures(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "seam-fail")
+	if err := ledgerMkdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	filePath := filepath.Join(dir, "f.txt")
+	f, err := ledgerOpen(filePath, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+
+	// 1. ledgerGetFileSecurity fails
+	origSec := ledgerGetFileSecurity
+	defer func() { ledgerGetFileSecurity = origSec }()
+	ledgerGetFileSecurity = func(h windows.Handle) (*windows.SECURITY_DESCRIPTOR, error) {
+		return nil, errors.New("sec info fail")
+	}
+	if ledgerPrivateHandle(f) {
+		t.Fatal("expected false when ledgerGetFileSecurity fails")
+	}
+
+	// 2. Owner does not match sid
+	systemSD, err := windows.SecurityDescriptorFromString("O:SYD:P(A;OICI;FA;;;SY)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ledgerGetFileSecurity = func(h windows.Handle) (*windows.SECURITY_DESCRIPTOR, error) {
+		return systemSD, nil
+	}
+	if ledgerPrivateHandle(f) {
+		t.Fatal("expected false when owner does not match sid")
+	}
+
+	// 3. Ace header type or mask mismatch
+	_, userSid, err := ledgerSecurity()
+	if err != nil {
+		t.Fatal(err)
+	}
+	readOnlySD, err := windows.SecurityDescriptorFromString("O:" + userSid.String() + "D:P(A;OICI;FR;;;" + userSid.String() + ")")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ledgerGetFileSecurity = func(h windows.Handle) (*windows.SECURITY_DESCRIPTOR, error) {
+		return readOnlySD, nil
+	}
+	if ledgerPrivateHandle(f) {
+		t.Fatal("expected false when ACE mask is not full access")
+	}
+	ledgerGetFileSecurity = origSec
+
+	// 4. ledgerGetFileInfo returns reparse point in ledgerPrivatePath
+	origInfo := ledgerGetFileInfo
+	defer func() { ledgerGetFileInfo = origInfo }()
+	ledgerGetFileInfo = func(h windows.Handle, info *windows.ByHandleFileInformation) error {
+		info.FileAttributes = windows.FILE_ATTRIBUTE_REPARSE_POINT
+		return nil
+	}
+	if ledgerPrivatePath(filePath, false) {
+		t.Fatal("expected false when ledgerGetFileInfo reports reparse point")
+	}
+
+	// 5. ledgerGetFileInfo returns directory/reparse point in ledgerOpen
+	ledgerGetFileInfo = func(h windows.Handle, info *windows.ByHandleFileInformation) error {
+		info.FileAttributes = windows.FILE_ATTRIBUTE_DIRECTORY
+		return nil
+	}
+	if _, err := ledgerOpen(filePath, false); errorCode(err) != "invalid_input" {
+		t.Fatalf("expected invalid_input when ledgerOpen encounters directory/reparse point, got %v", err)
+	}
+	ledgerGetFileInfo = origInfo
+
+	// 6. ledgerTemp fails when CreateFile fails (e.g. nonexistent dir)
+	if _, err := ledgerTemp(filepath.Join(dir, "nonexistent")); err == nil {
+		t.Fatal("expected error from ledgerTemp on nonexistent dir")
 	}
 }
 

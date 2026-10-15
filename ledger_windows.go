@@ -9,8 +9,12 @@ import (
 	"unsafe"
 )
 
+var ledgerTokenUser = func() (*windows.Tokenuser, error) {
+	return windows.GetCurrentProcessToken().GetTokenUser()
+}
+
 var ledgerSecurity = func() (*windows.SECURITY_DESCRIPTOR, *windows.SID, error) {
-	user, e := windows.GetCurrentProcessToken().GetTokenUser()
+	user, e := ledgerTokenUser()
 	if e != nil {
 		return nil, nil, e
 	}
@@ -20,6 +24,10 @@ var ledgerSecurity = func() (*windows.SECURITY_DESCRIPTOR, *windows.SID, error) 
 }
 
 func ledgerMkdir(dir string) error {
+	name, e := windows.UTF16PtrFromString(dir)
+	if e != nil {
+		return e
+	}
 	if _, e := os.Lstat(dir); e == nil {
 		return nil
 	} else if !os.IsNotExist(e) {
@@ -32,18 +40,19 @@ func ledgerMkdir(dir string) error {
 	if e != nil {
 		return e
 	}
-	name, e := windows.UTF16PtrFromString(dir)
-	if e != nil {
-		return e
-	}
 	return windows.CreateDirectory(name, &windows.SecurityAttributes{Length: uint32(unsafe.Sizeof(windows.SecurityAttributes{})), SecurityDescriptor: sd})
 }
+
+var ledgerGetFileSecurity = func(h windows.Handle) (*windows.SECURITY_DESCRIPTOR, error) {
+	return windows.GetSecurityInfo(h, windows.SE_FILE_OBJECT, windows.OWNER_SECURITY_INFORMATION|windows.DACL_SECURITY_INFORMATION)
+}
+
 func ledgerPrivateHandle(f *os.File) bool {
 	_, sid, e := ledgerSecurity()
 	if e != nil {
 		return false
 	}
-	sd, e := windows.GetSecurityInfo(windows.Handle(f.Fd()), windows.SE_FILE_OBJECT, windows.OWNER_SECURITY_INFORMATION|windows.DACL_SECURITY_INFORMATION)
+	sd, e := ledgerGetFileSecurity(windows.Handle(f.Fd()))
 	if e != nil {
 		return false
 	}
@@ -66,6 +75,11 @@ func ledgerPrivateFile(f *os.File) bool {
 	s, e := f.Stat()
 	return e == nil && s.Mode().IsRegular() && ledgerPrivateHandle(f)
 }
+
+var ledgerGetFileInfo = func(h windows.Handle, info *windows.ByHandleFileInformation) error {
+	return windows.GetFileInformationByHandle(h, info)
+}
+
 func ledgerPrivatePath(path string, dir bool) bool {
 	name, e := windows.UTF16PtrFromString(path)
 	if e != nil {
@@ -82,12 +96,13 @@ func ledgerPrivatePath(path string, dir bool) bool {
 	f := os.NewFile(uintptr(h), path)
 	defer f.Close()
 	var info windows.ByHandleFileInformation
-	if windows.GetFileInformationByHandle(h, &info) != nil || info.FileAttributes&windows.FILE_ATTRIBUTE_REPARSE_POINT != 0 {
+	if ledgerGetFileInfo(h, &info) != nil || info.FileAttributes&windows.FILE_ATTRIBUTE_REPARSE_POINT != 0 {
 		return false
 	}
 	return (info.FileAttributes&windows.FILE_ATTRIBUTE_DIRECTORY != 0) == dir && ledgerPrivateHandle(f)
 }
-func ledgerOpen(path string, create bool) (*os.File, error) {
+
+var ledgerOpen = func(path string, create bool) (*os.File, error) {
 	name, e := windows.UTF16PtrFromString(path)
 	if e != nil {
 		return nil, e
@@ -111,12 +126,13 @@ func ledgerOpen(path string, create bool) (*os.File, error) {
 	}
 	f := os.NewFile(uintptr(h), path)
 	var info windows.ByHandleFileInformation
-	if windows.GetFileInformationByHandle(h, &info) != nil || info.FileAttributes&(windows.FILE_ATTRIBUTE_REPARSE_POINT|windows.FILE_ATTRIBUTE_DIRECTORY) != 0 {
+	if ledgerGetFileInfo(h, &info) != nil || info.FileAttributes&(windows.FILE_ATTRIBUTE_REPARSE_POINT|windows.FILE_ATTRIBUTE_DIRECTORY) != 0 {
 		f.Close()
 		return nil, fail("invalid_input")
 	}
 	return f, nil
 }
+
 func ledgerLock(f *os.File, nonblocking bool) error {
 	flags := uint32(windows.LOCKFILE_EXCLUSIVE_LOCK)
 	if nonblocking {

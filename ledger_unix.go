@@ -22,7 +22,8 @@ func ledgerPrivateFile(f *os.File) bool {
 	s, e := f.Stat()
 	return e == nil && s.Mode().IsRegular() && s.Mode().Perm() == 0600
 }
-func ledgerOpen(path string, create bool) (*os.File, error) {
+
+var ledgerOpen = func(path string, create bool) (*os.File, error) {
 	flags := os.O_RDONLY | syscall.O_NOFOLLOW
 	mode := os.FileMode(0)
 	if create {
@@ -31,6 +32,7 @@ func ledgerOpen(path string, create bool) (*os.File, error) {
 	}
 	return os.OpenFile(path, flags, mode)
 }
+
 func ledgerLock(f *os.File, nonblocking bool) error {
 	flags := syscall.LOCK_EX
 	if nonblocking {
