@@ -9,7 +9,7 @@ import (
 	"unsafe"
 )
 
-func ledgerSecurity() (*windows.SECURITY_DESCRIPTOR, *windows.SID, error) {
+var ledgerSecurity = func() (*windows.SECURITY_DESCRIPTOR, *windows.SID, error) {
 	user, e := windows.GetCurrentProcessToken().GetTokenUser()
 	if e != nil {
 		return nil, nil, e
@@ -18,6 +18,7 @@ func ledgerSecurity() (*windows.SECURITY_DESCRIPTOR, *windows.SID, error) {
 	sd, e := windows.SecurityDescriptorFromString("O:" + sid.String() + "D:P(A;OICI;FA;;;" + sid.String() + ")")
 	return sd, sid, e
 }
+
 func ledgerMkdir(dir string) error {
 	if _, e := os.Lstat(dir); e == nil {
 		return nil
@@ -110,7 +111,7 @@ func ledgerOpen(path string, create bool) (*os.File, error) {
 	}
 	f := os.NewFile(uintptr(h), path)
 	var info windows.ByHandleFileInformation
-	if windows.GetFileInformationByHandle(h, &info) != nil || info.FileAttributes&(windows.FILE_ATTRIBUTE_REPARSE_POINT|windows.FILE_ATTRIBUTE_DIRECTORY) != 0 || !ledgerPrivateHandle(f) {
+	if windows.GetFileInformationByHandle(h, &info) != nil || info.FileAttributes&(windows.FILE_ATTRIBUTE_REPARSE_POINT|windows.FILE_ATTRIBUTE_DIRECTORY) != 0 {
 		f.Close()
 		return nil, fail("invalid_input")
 	}
@@ -150,7 +151,7 @@ func ledgerReplace(from, to string) error {
 // is unsupported by Windows. The new file was separately FlushFileBuffers'd by Sync.
 func ledgerSyncDir(string) error { return nil }
 
-func ledgerTemp(dir string) (*os.File, error) {
+var ledgerTemp = func(dir string) (*os.File, error) {
 	path := filepath.Join(dir, ".ledger-"+opaqueID())
 	name, e := windows.UTF16PtrFromString(path)
 	if e != nil {

@@ -395,6 +395,26 @@ func TestBudget_FileLedger_SecureTempFail(t *testing.T) {
 	}
 }
 
+// Not parallel: modifies ledgerTemp seam.
+func TestBudget_FileLedger_TempFail(t *testing.T) {
+	orig := ledgerTemp
+	defer func() { ledgerTemp = orig }()
+
+	dir := filepath.Join(t.TempDir(), "ledger-tempfail")
+	fl, err := NewFileLedger(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ledgerTemp = func(string) (*os.File, error) {
+		return nil, errors.New("temp failed")
+	}
+
+	if err := fl.update(func(s *ledgerState) error { return nil }); errorCode(err) != "invalid_input" {
+		t.Fatalf("expected invalid_input when ledgerTemp fails, got %v", err)
+	}
+}
+
 func TestBudget_FileLedger_AdditionalBranches(t *testing.T) {
 	t.Parallel()
 
@@ -407,6 +427,11 @@ func TestBudget_FileLedger_AdditionalBranches(t *testing.T) {
 	tmp.Close()
 	if _, err := NewFileLedger(tmp.Name()); errorCode(err) != "invalid_input" {
 		t.Fatalf("expected invalid_input for non-directory, got %v", err)
+	}
+
+	// NewFileLedger when dir's parent is a file (ledgerMkdir fails)
+	if _, err := NewFileLedger(filepath.Join(tmp.Name(), "sub")); errorCode(err) != "invalid_input" {
+		t.Fatalf("expected invalid_input when parent is a file, got %v", err)
 	}
 
 	// NewFileLedger when dir is not 0700
@@ -487,22 +512,6 @@ func TestBudget_FileLedger_AdditionalBranches(t *testing.T) {
 		return nil
 	}); errorCode(err) != "response_limit" {
 		t.Fatalf("expected response_limit on huge state, got %v", err)
-	}
-
-	// updateContext when ledgerTemp fails (dir made readonly during update)
-	if runtime.GOOS != "windows" {
-		roDir := filepath.Join(t.TempDir(), "fl-ro")
-		flRO, err := NewFileLedger(roDir)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := flRO.update(func(s *ledgerState) error {
-			_ = os.Chmod(roDir, 0500)
-			return nil
-		}); errorCode(err) != "invalid_input" {
-			t.Fatalf("expected invalid_input when ledgerTemp fails, got %v", err)
-		}
-		_ = os.Chmod(roDir, 0700)
 	}
 
 	// updateContext when ledgerReplace fails (target is a directory)
