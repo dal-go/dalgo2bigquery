@@ -122,12 +122,7 @@ func TestBudget_FileLedger_Branches(t *testing.T) {
 	}
 
 	// Valid FileLedger in temp dir
-	tmpDir, err := os.MkdirTemp("", "ledger-valid-*")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(tmpDir)
-
+	tmpDir := filepath.Join(t.TempDir(), "ledger-valid")
 	fl, err := NewFileLedger(tmpDir)
 	if err != nil {
 		t.Fatalf("unexpected error creating FileLedger: %v", err)
@@ -154,17 +149,13 @@ func TestBudget_FileLedger_Branches(t *testing.T) {
 	unlock()
 
 	// lock failure when file cannot be created/opened as private
-	badLockDir, err := os.MkdirTemp("", "bad-lock-*")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(badLockDir)
-	// Create directory with name session.lock so opening session.lock as file fails or fails regular file check
-	if err := os.Mkdir(filepath.Join(badLockDir, "session.lock"), 0700); err != nil {
-		t.Fatal(err)
-	}
+	badLockDir := filepath.Join(t.TempDir(), "bad-lock")
 	badFL, err := NewFileLedger(badLockDir)
 	if err != nil {
+		t.Fatal(err)
+	}
+	// Create directory with name session.lock so opening session.lock as file fails or fails regular file check
+	if err := os.Mkdir(filepath.Join(badLockDir, "session.lock"), 0700); err != nil {
 		t.Fatal(err)
 	}
 	if err := badFL.update(func(*ledgerState) error { return nil }); errorCode(err) != "invalid_input" {
@@ -172,18 +163,17 @@ func TestBudget_FileLedger_Branches(t *testing.T) {
 	}
 
 	// Corrupt session.json: unknown fields rejected
-	corruptDir, err := os.MkdirTemp("", "corrupt-ledger-*")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(corruptDir)
+	corruptDir := filepath.Join(t.TempDir(), "corrupt-ledger")
 	corruptFL, err := NewFileLedger(corruptDir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(corruptDir, "session.json"), []byte(`{"version":1,"unknown":true}`), 0600); err != nil {
+	sessFile, err := ledgerOpen(filepath.Join(corruptDir, "session.json"), true)
+	if err != nil {
 		t.Fatal(err)
 	}
+	_, _ = sessFile.Write([]byte(`{"version":1,"unknown":true}`))
+	_ = sessFile.Close()
 	if err := corruptFL.update(func(*ledgerState) error { return nil }); errorCode(err) != "invalid_input" {
 		t.Fatalf("expected invalid_input on corrupt session.json, got %v", err)
 	}
@@ -385,12 +375,7 @@ func TestBudget_FileLedger_SecureTempFail(t *testing.T) {
 	orig := ledgerSecureTemp
 	defer func() { ledgerSecureTemp = orig }()
 
-	dir, err := os.MkdirTemp("", "ledger-sectemp-*")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(dir)
-	_ = os.Chmod(dir, 0700)
+	dir := filepath.Join(t.TempDir(), "ledger-sectemp")
 
 	fl, err := NewFileLedger(dir)
 	if err != nil {
