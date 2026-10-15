@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 )
 
 var makeFileNonPrivate = func(path string) error {
@@ -293,26 +292,29 @@ func TestBudget_ClientRunMethods(t *testing.T) {
 		t.Fatalf("expected local_stopped/deadline from ledgerLockContext on canceled context, got %v", err)
 	}
 
-	// ledgerLockContext canceled while waiting on lock (line 311)
-	lockPath := filepath.Join(t.TempDir(), "held.lock")
-	heldFile, err := ledgerOpen(lockPath, true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer heldFile.Close()
-	if err := ledgerLock(heldFile, true); err != nil {
-		t.Fatal(err)
-	}
+}
 
-	secondFile, err := ledgerOpen(lockPath, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer secondFile.Close()
-
+// Not parallel: mutates ledgerLock seam.
+func TestBudget_LockContext_CanceledInSelect(t *testing.T) {
+	origLock := ledgerLock
+	defer func() { ledgerLock = origLock }()
+	cancelCalled := false
 	waitCtx, waitCancel := context.WithCancel(context.Background())
-	time.AfterFunc(time.Millisecond, waitCancel)
-	if err := ledgerLockContext(waitCtx, secondFile); errorCode(err) != "local_stopped" || err.(*Error).Reason != "deadline" {
+	defer waitCancel()
+	ledgerLock = func(f *os.File, nonblocking bool) error {
+		if !cancelCalled {
+			cancelCalled = true
+			waitCancel()
+			return errors.New("locked")
+		}
+		return origLock(f, nonblocking)
+	}
+	tmpF, err := os.CreateTemp(t.TempDir(), "lock")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tmpF.Close()
+	if err := ledgerLockContext(waitCtx, tmpF); errorCode(err) != "local_stopped" || err.(*Error).Reason != "deadline" {
 		t.Fatalf("expected local_stopped/deadline when canceled in select, got %v", err)
 	}
 }

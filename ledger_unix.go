@@ -33,13 +33,14 @@ var ledgerOpen = func(path string, create bool) (*os.File, error) {
 	return os.OpenFile(path, flags, mode)
 }
 
-func ledgerLock(f *os.File, nonblocking bool) error {
+var ledgerLock = func(f *os.File, nonblocking bool) error {
 	flags := syscall.LOCK_EX
 	if nonblocking {
 		flags |= syscall.LOCK_NB
 	}
 	return syscall.Flock(int(f.Fd()), flags)
 }
+
 func ledgerUnlock(f *os.File) error { return syscall.Flock(int(f.Fd()), syscall.LOCK_UN) }
 
 var ledgerSecureTemp = func(f *os.File) error { return f.Chmod(0600) }

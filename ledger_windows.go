@@ -133,13 +133,14 @@ var ledgerOpen = func(path string, create bool) (*os.File, error) {
 	return f, nil
 }
 
-func ledgerLock(f *os.File, nonblocking bool) error {
+var ledgerLock = func(f *os.File, nonblocking bool) error {
 	flags := uint32(windows.LOCKFILE_EXCLUSIVE_LOCK)
 	if nonblocking {
 		flags |= windows.LOCKFILE_FAIL_IMMEDIATELY
 	}
 	return windows.LockFileEx(windows.Handle(f.Fd()), flags, 0, 1, 0, &windows.Overlapped{})
 }
+
 func ledgerUnlock(f *os.File) error {
 	return windows.UnlockFileEx(windows.Handle(f.Fd()), 0, 1, 0, &windows.Overlapped{})
 }
