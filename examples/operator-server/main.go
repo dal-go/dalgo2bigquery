@@ -69,17 +69,22 @@ func run(ctx context.Context, args []string, factory operatorFactory, serve func
 	if e != nil {
 		return e
 	}
-	handler, e := server.NewHandler(server.Config{Client: client, Plan: cfg.Plan, Execution: cfg.Execution, Bounds: cfg.Bounds, BrowserOrigin: *origin})
+	handler, e := newServerHandler(server.Config{Client: client, Plan: cfg.Plan, Execution: cfg.Execution, Bounds: cfg.Bounds, BrowserOrigin: *origin})
 	if e != nil {
 		return e
 	}
 	return serve(ctx, *listen, handler)
 }
+
+var newServerHandler = server.NewHandler
+var exit = os.Exit
+var serveFunc = server.Serve
+
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
-	if e := run(ctx, os.Args[1:], providerFactory, server.Serve); e != nil {
+	if e := run(ctx, os.Args[1:], providerFactory, serveFunc); e != nil {
 		fmt.Fprintln(os.Stderr, "operator-server:", e)
-		os.Exit(1)
+		exit(1)
 	}
 }
