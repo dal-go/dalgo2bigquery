@@ -3,8 +3,8 @@ module github.com/dal-go/dalgo2bigquery
 go 1.27.0
 
 require (
-	github.com/dal-go/dalgo v0.93.0
-	github.com/dal-go/record v0.1.4
+	github.com/dal-go/dalgo v0.95.2
+	github.com/dal-go/record v0.1.5
 	golang.org/x/sys v0.47.0
 	google.golang.org/api v0.296.0
 )

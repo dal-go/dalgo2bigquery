@@ -16,7 +16,7 @@ import (
 
 	"github.com/dal-go/dalgo/dal"
 	"github.com/dal-go/dalgo/dbschema"
-	"github.com/dal-go/dalgo/dtql"
+	"github.com/dal-go/dalgo/tugql"
 )
 
 func ptr[T any](v T) *T {
@@ -562,7 +562,7 @@ func TestJobs_Execute_LedgerLeaseError(t *testing.T) {
 		t.Fatal(err)
 	}
 	sc := fixtures[0]
-	q, err := dtql.Deserialize([]byte(sc.Query))
+	q, err := tugql.Deserialize([]byte(sc.Query))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -625,7 +625,7 @@ func TestReader_Resume_LedgerLeaseError(t *testing.T) {
 		t.Fatal(err)
 	}
 	sc := fixtures[0]
-	q, err := dtql.Deserialize([]byte(sc.Query))
+	q, err := tugql.Deserialize([]byte(sc.Query))
 	if err != nil {
 		t.Fatal(err)
 	}

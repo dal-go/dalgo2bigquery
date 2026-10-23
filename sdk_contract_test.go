@@ -12,8 +12,8 @@ import (
 
 	"github.com/dal-go/dalgo/access"
 	"github.com/dal-go/dalgo/dal"
-	"github.com/dal-go/dalgo/dtql"
 	"github.com/dal-go/dalgo/recordset"
+	"github.com/dal-go/dalgo/tugql"
 	"github.com/dal-go/record"
 	bq "google.golang.org/api/bigquery/v2"
 	"google.golang.org/api/option"
@@ -129,7 +129,7 @@ scopes:
 	if err != nil {
 		t.Fatal(err)
 	}
-	q, err := dtql.Deserialize([]byte(`from: {name: customers}
+	q, err := tugql.Deserialize([]byte(`from: {name: customers}
 columns: [{field: name}]
 limit: 2
 `))
@@ -152,9 +152,9 @@ limit: 2
 	}
 }
 
-func TestProposedDTQLExampleParses(t *testing.T) {
+func TestProposedTugQLExampleParses(t *testing.T) {
 	t.Parallel()
-	_, err := dtql.Deserialize([]byte(`from: {name: sample}
+	_, err := tugql.Deserialize([]byte(`from: {name: sample}
 columns: [{field: word}, {field: word_count}]
 where: {op: ">=", left: {field: word_count}, right: {value: "10"}}
 orderBy: [{field: word}]

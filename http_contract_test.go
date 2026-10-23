@@ -8,7 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"github.com/dal-go/dalgo/dtql"
+	"github.com/dal-go/dalgo/tugql"
 	"io"
 	"net/http"
 	"os"
@@ -147,7 +147,7 @@ func runHTTPScenario(t *testing.T, id string) {
 	if sc.ID == "" {
 		t.Fatal("missing http scenario", id)
 	}
-	q, e := dtql.Deserialize([]byte(sc.Query))
+	q, e := tugql.Deserialize([]byte(sc.Query))
 	if e != nil {
 		t.Fatal(e)
 	}

@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/dal-go/dalgo/dal"
-	"github.com/dal-go/dalgo/dtql"
+	"github.com/dal-go/dalgo/tugql"
 )
 
 func TestDiscovery_CoverageGaps(t *testing.T) {
@@ -116,7 +116,7 @@ func TestReader_Resume_SeamErrorBranches(t *testing.T) {
 		t.Fatal(err)
 	}
 	sc := fixtures[0]
-	q, err := dtql.Deserialize([]byte(sc.Query))
+	q, err := tugql.Deserialize([]byte(sc.Query))
 	if err != nil {
 		t.Fatal(err)
 	}
