@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dal-go/dalgo/dtql"
+	"github.com/dal-go/dalgo/tugql"
 	bigquery "github.com/dal-go/dalgo2bigquery"
 )
 
@@ -52,7 +52,7 @@ func TestHandlerActualPreviewExecutePageStatus(t *testing.T) {
 		t.Fatal(e)
 	}
 	sc := fixtures[0]
-	q, e := dtql.Deserialize([]byte(sc.Query))
+	q, e := tugql.Deserialize([]byte(sc.Query))
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -145,7 +145,7 @@ func newTestClient(t *testing.T) (*bigquery.Client, bigquery.ReadPlan, bigquery.
 		t.Fatal(e)
 	}
 	sc := fixtures[0]
-	q, e := dtql.Deserialize([]byte(sc.Query))
+	q, e := tugql.Deserialize([]byte(sc.Query))
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -395,7 +395,7 @@ func TestHandler_ExecuteAndResumeWithRunError(t *testing.T) {
 		t.Fatal(e)
 	}
 	sc := fixtures[0]
-	q, e := dtql.Deserialize([]byte(sc.Query))
+	q, e := tugql.Deserialize([]byte(sc.Query))
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -497,7 +497,7 @@ func TestHandler_ResumeExpiredReturnsRunWithError(t *testing.T) {
 	}
 	sc := fixtures[0]
 	sc.Bounds.WallMs = 300 // Short wall limit so execution deadline expires quickly
-	q, e := dtql.Deserialize([]byte(sc.Query))
+	q, e := tugql.Deserialize([]byte(sc.Query))
 	if e != nil {
 		t.Fatal(e)
 	}
