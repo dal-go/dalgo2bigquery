@@ -1,0 +1,36 @@
+{
+  "format": "ovdb-bigquery-observation/draft-1",
+  "source_id": "bigquery-world-bank-wdi",
+  "source_project": "bigquery-public-data",
+  "dataset_id": "world_bank_wdi",
+  "table_id": "synthetic_metadata_fixture",
+  "location": "US",
+  "object_type": "TABLE",
+  "observed_at": "2026-10-06T00:00:00Z",
+  "projection": "partial-public-schema",
+  "provenance": {
+    "kind": "synthetic-fixture",
+    "method": "datasets.get+tables.get",
+    "verifier": "public-projection-review-v1"
+  },
+  "schema": [
+    {
+      "name": "fixture_code",
+      "type": "STRING",
+      "mode": "REQUIRED"
+    },
+    {
+      "name": "fixture_details",
+      "type": "RECORD",
+      "mode": "NULLABLE",
+      "fields": [
+        {
+          "name": "fixture_year",
+          "type": "INTEGER",
+          "mode": "NULLABLE"
+        }
+      ]
+    }
+  ],
+  "sha256": "sha256:cd9eaa21f4007a257f123180784eb658096edcb1ac85c447fc56fec3953b2f8f"
+}

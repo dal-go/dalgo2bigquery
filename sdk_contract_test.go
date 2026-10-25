@@ -12,8 +12,8 @@ import (
 
 	"github.com/dal-go/dalgo/access"
 	"github.com/dal-go/dalgo/dal"
-	"github.com/dal-go/dalgo/dtql"
 	"github.com/dal-go/dalgo/recordset"
+	"github.com/dal-go/dalgo/tugql"
 	"github.com/dal-go/record"
 	bq "google.golang.org/api/bigquery/v2"
 	"google.golang.org/api/option"
@@ -34,6 +34,7 @@ func svc(t *testing.T, f rt) *bq.Service {
 	return s
 }
 func TestSDKSerializationAndMethods(t *testing.T) {
+	t.Parallel()
 	calls := 0
 	s := svc(t, func(r *http.Request) (*http.Response, error) {
 		calls++
@@ -71,6 +72,7 @@ func TestSDKSerializationAndMethods(t *testing.T) {
 	}
 }
 func TestSubmissionNotRetriedByGeneratedClient(t *testing.T) {
+	t.Parallel()
 	calls := 0
 	s := svc(t, func(*http.Request) (*http.Response, error) { calls++; return nil, io.ErrUnexpectedEOF })
 	_, err := s.Jobs.Query("job-project", &bq.QueryRequest{Query: "SELECT 1"}).Context(context.Background()).Do()
@@ -79,6 +81,7 @@ func TestSubmissionNotRetriedByGeneratedClient(t *testing.T) {
 	}
 }
 func TestGeneratedCellPresenceCollapse(t *testing.T) {
+	t.Parallel()
 	for _, raw := range []string{`{}`, `{"v":null}`} {
 		var cell bq.TableCell
 		if err := json.Unmarshal([]byte(raw), &cell); err != nil || cell.V != nil {
@@ -106,6 +109,7 @@ func (c *capture) ExecuteQueryToRecordsetReader(_ context.Context, q dal.Query, 
 	return nil, nil
 }
 func TestPolicyCaptureNoNetwork(t *testing.T) {
+	t.Parallel()
 	p, err := access.UnmarshalAccessPolicyYAML([]byte(`apiVersion: dalgo.io/access/v1
 kind: AccessPolicy
 metadata: {name: fixture}
@@ -125,7 +129,7 @@ scopes:
 	if err != nil {
 		t.Fatal(err)
 	}
-	q, err := dtql.Deserialize([]byte(`from: {name: customers}
+	q, err := tugql.Deserialize([]byte(`from: {name: customers}
 columns: [{field: name}]
 limit: 2
 `))
@@ -148,8 +152,9 @@ limit: 2
 	}
 }
 
-func TestProposedDTQLExampleParses(t *testing.T) {
-	_, err := dtql.Deserialize([]byte(`from: {name: sample}
+func TestProposedTugQLExampleParses(t *testing.T) {
+	t.Parallel()
+	_, err := tugql.Deserialize([]byte(`from: {name: sample}
 columns: [{field: word}, {field: word_count}]
 where: {op: ">=", left: {field: word_count}, right: {value: "10"}}
 orderBy: [{field: word}]

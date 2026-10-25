@@ -1,0 +1,3 @@
+* text eol=lf
+# Exact immutable contract bytes must never be normalized on checkout.
+testdata/contract/*.json -text

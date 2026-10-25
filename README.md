@@ -1,22 +1,162 @@
 # dalgo2bigquery
 
-Go building blocks for the accepted DataTug BigQuery analytical contract. This first tranche implements bounded lossless JSON validation, exact scalar cell normalization, restricted RFC8785 JCS and explicit named hash projections, and original execution-deadline calculations. It is not an executable BigQuery adapter yet.
+An analytical BigQuery driver for bounded, explicitly approved reads. It compiles a restricted DALgo scalar query, verifies a reviewed native `TABLE`, performs a dry run, and executes one capped `jobs.query` submission. Results retain a schema and exact scalar values without inventing record keys. Same-job paging, partial-page resume, status, cancellation requests, and trusted same-subject reconnect use a persistent private ledger.
 
-The governing [A0 contract](https://github.com/datatug/datatug/blob/a541f8da3d1b2db9ffa5c2e5396efa2afa768066/spec/research/public-data-fabric/evidence/bigquery-dual-runtime/a0/accepted-contract.md) and [approved plan](https://github.com/sneat-co/workbench/blob/9fd225742a6eeb6cf439ef935977a8c6c2dba550/spec/plans/github.com/datatug/datatug/public-data-fabric-bigquery/README.md) require both Go and JavaScript. Released DALgo v0.89.6, record v0.1.4 and Google API SDK v0.296.0 are pinned without replacements. SDK/policy tests use in-memory transport, never credentials or real jobs.
+The governing [accepted A0 contract](https://github.com/datatug/datatug/blob/a541f8da3d1b2db9ffa5c2e5396efa2afa768066/spec/research/public-data-fabric/evidence/bigquery-dual-runtime/a0/accepted-contract.md) and [approved plan](https://github.com/sneat-co/workbench/blob/9fd225742a6eeb6cf439ef935977a8c6c2dba550/spec/plans/github.com/datatug/datatug/public-data-fabric-bigquery/README.md) require both Go and JavaScript. DALgo v0.93.0, record v0.1.4 and Google API SDK v0.296.0 are pinned without replacements. The independently reviewed Go driver was released as [v0.1.0](https://github.com/dal-go/dalgo2bigquery/releases/tag/v0.1.0) from [0a559674](https://github.com/dal-go/dalgo2bigquery/commit/0a5596742d43b8be171ce2dba6b35b6872146145). [v0.1.1](https://github.com/dal-go/dalgo2bigquery/releases/tag/v0.1.1), from [7df3d802](https://github.com/dal-go/dalgo2bigquery/commit/7df3d802f2c5188025c56fd8e41d27f01206a303), adds the independently reviewed `Client.Snapshot` API. Consumer integration, JavaScript acceptance and actual live acceptance remain required.
 
-## Contract corpus
+## Operator integration
 
-`testdata/contract/manifest.json` binds revision2 initial scenarios by SHA256. This corpus is owned here; JavaScript vendors exact committed bytes with immutable source commit/hash. Additions require a new revision and both runtime reports. These initial canonical/value/row cases are a first subset, not the final full request/response state-machine corpus. Fields named `input` contain literal raw JSON strings; they must not be parsed/reserialized before the production parser sees them. Every scenario has a stable ID, kind, expected canonical/digest/value or sanitized error. Revision2 preserves the original four scenario files byte-for-byte and adds 20 boundary cases in `scalar-boundary-r2.json`. Direct Go scalar strings reject malformed UTF-8; direct JavaScript strings must reject unpaired UTF-16 surrogates. `scalar-bytes` cases use `input_hex` for deliberately invalid UTF-8 and must never be decoded with replacement. FLOAT64 inputs must match the exact shared decimal/exponent grammar recorded in the manifest as an entire string (including the final code unit) before runtime parsing; hexadecimal/Go literal syntax, underscores, whitespace, nonfinite names and empty strings are rejected. Decimal fractions and exponents remain supported; coercion never widens this grammar. Both runtimes must preserve scalar exact strings and distinguish SQL NULL from JSON text null.
+### Job-free physical table source
 
-Named payload field spelling is frozen in `HashPayload`: ReadPlan and SourceProfile use A0 fields; Observation binding uses `table/location/type/config/schema`; Approval uses `effectivePlanDigest/observationDigest/policyDigest/principal/jobProject/location/maximumBytesBilled/sessionBudgetBytes/bounds/estimatedBytes`. Only explicit top-level volatile fields are omitted. This does not validate complete typed profile/plan eligibility; the subsequent compiler/metadata gates do that. All numeric JSON tokens in adapter-owned hashes must be exact integer lexical tokens within the JS safe range; warehouse numbers remain strings. Raw provider JSON preserves every numeric token without floating conversion. No Unicode normalization is performed.
+`NewReadOnlyDatabase(SourceConfig{...})` creates a DALgo handle for one explicitly selected BigQuery project and dataset. It exposes `dbschema.SchemaReader`, `dbschema.SourceRowsReader`, and `dbschema.SourceViewReader`. `ListCollections` lists physical tables; `ListSourceViews` exposes ordinary view names and columns as metadata (its `CreateSQL` is empty because BigQuery returns the SELECT body, not original CREATE VIEW DDL), while `OpenSourceRows` refuses view reads. `DescribeCollection` carries BigQuery's declared column types and primary/foreign-key metadata; BigQuery key declarations are **not enforced**. `DescribeSourceFields` also returns original field descriptions, which portable `dbschema.FieldDef` cannot represent. Search/vector indexes and reverse foreign-key lookups are reported unsupported, rather than reported absent.
 
-`OperationDeadline` computes per-operation bounds from the original trusted-ledger absolute deadline. It does not persist a ledger or authorize control operations; production status/cancel orchestration must enforce its explicit capability, unchanged cumulative counters and billing reservation rules.
+The source uses only `datasets.get`, `tables.list`, `tables.get`, and `tabledata.list` GET requests. It never submits a query job, writes data, discovers credentials, or stores tokens. The caller supplies an existing `Provider` and transport with read access to the selected dataset. Rows stream by page. INT64 values stay exact in `int64`; NUMERIC/BIGNUMERIC stay decimal strings; BYTES become raw `[]byte`, preserving empty bytes separately from SQL NULL; TIMESTAMP becomes UTC `time.Time`. Nested/repeated types, field configurations such as `maxLength` or `defaultValueExpression`, and non-table objects fail before row dispatch; this is not a complete BigQuery schema reader. `SourceLimits` are admission bounds: reaching one returns an error instead of a successful prefix.
 
-## Next tranches and acceptance
+The cursor rejects repeated page tokens, changing `totalRows`, short or excessive reads, and changed table metadata at the end of the scan. BigQuery `tabledata.list` does not provide an immutable cross-page snapshot. A write that changes and then restores a table between checks can still escape these guards; callers claiming historical parity should compare stable tables or use a separate snapshot workflow. The existing approved-plan `Executor` remains the bounded SQL read path, with its own approval and job budget.
 
-1. Complete schema/precision validation and query guards/compiler, then native TABLE metadata eligibility and bounded authenticated SDK transport, approval bindings, private atomic budget/nonce/deadline ledger.
-2. Single-dispatch capped jobs, status/cancel, schema-bearing results, same-job and partial-page cursors, recordset bridge and injected local server harness. Expand the corpus with exact requests/status/headers/raw bodies and expected dispatch counts.
-3. Tagged driver release before actual CLI integration; browser package parity at both core refs, source-access profile and rights/admission review.
-4. Independent actual CLI/local-server and deployed-browser metadata → dry run → approved cap → two same-job pages, with operator-owned identity/project and concrete spending cap. Exact CI/release/deploy/landing/cleanup receipts remain required.
+The operator supplies a reviewed `SourceProfile`, a trusted `Provider`, an explicit job project/cap/session budget, and a `Prepare` policy bridge. `Provider.Authorize` attests a verified stable subject, current generation, expiry and granted capabilities; it authenticates above the supplied dispatch guard. Request JSON, token presence, email and ADC labels cannot attest identity. Providers must respect the supplied context, wrap the provided transport, and redact their own errors/logging. Preparation, identity, authentication middleware, transport and body work receive the original finite operation bound. Ignored cancellation returns control to the caller, without granting delayed work continuation authority. A process-wide ceiling of 64 dependency workers bounds abandoned work; a never-returning trusted dependency can retain a worker slot and its physical per-run HTTP gate until process exit. Worker admission refusal releases an unused physical gate and never records a dispatch. After admission, the same worker retains its slot through physical response Close; EOF alone does not release the gate, and cleanup needs no additional worker admission. Subsequent operations cannot bypass that gate. This ceiling is not a session-wide active-job limit. The driver never acquires credentials or requests broader scopes.
 
-All six approved-plan tasks remain incomplete; this first tranche advances Task1 corpus preparation and Task2 value/deadline primitives only. Root owns landing. No source admission, live runtime success, budget persistence, approved paid execution or cancellation receipt is claimed.
+`Prepare` re-evaluates the original protected query and source context on every operation, returning its current effective `ReadPlan` and policy digest. `ValidateQuery` must run before any generic DALgo executor can choose a paid leaf fallback. The consumer remains responsible for its real policy wrapper and diagnostics. `Compile` supports one unaliased collection, explicit scalar projection, comparisons with typed constant parameters, null predicates, bounded `IN`, conjunction/disjunction, scalar ordering and a positive bounded limit. Joins, computed/star/aliased projections, groups, HAVING, offsets and unknown nodes fail before I/O. Reviewed profiles require explicit schema modes; omitted REST mode means NULLABLE. Nested/repeated types remain discoverable and fail scalar execution.
+
+Use one `NewFileLedger(absolutePrivateDirectory)` for a session, including after process restart. Linux/macOS use private modes, symlink rejection, OS file locks and fsynced atomic replacement. Windows uses an owner-only DACL, reparse-point rejection, OS file locks and write-through atomic replacement. `MemoryLedger` is an injected test harness, not durable session accounting. `Bounds.Concurrency=1` serializes actual HTTP operations for each run through physical response-body completion. Separately approved runs share an atomic session budget; no session-wide active-job-count limit is claimed. Budget reservations include unknown submissions and terminal jobs lacking authoritative billing. Terminal billed bytes replace the reservation and remain accounted as session expenditure.
+
+Recordsets expose only already authorized and accounted rows, detached from private buffered cells. Accessor or row mutation cannot reveal or alter future delivery. Private filesystem lock acquisition observes the operation context; atomic snapshots permit read-only receipt recovery without waiting for a writer lock. Filesystem read/write/fsync/rename primitives rely on the operator-owned local filesystem returning; this driver does not sandbox a hung OS filesystem. After a timeout, a bounded synchronous settlement attempt may add up to 10 ms; if a contended ledger prevents settlement, its persisted reserved/submitting record retains the full cap. No abandoned dependency can write the ledger or deliver rows.
+
+The API sequence is:
+
+```go
+plan, err := bigquery.Compile(profile, protectedQuery) // first ValidateQuery before fallback
+// Handle err, establish trusted provider/Prepare, and open a private FileLedger.
+client, err := bigquery.NewClient(bigquery.Config{
+    Profiles: []bigquery.SourceProfile{profile}, Provider: trustedProvider,
+    Transport: operatorTransport, Ledger: persistentLedger, Prepare: prepare,
+})
+preview, err := client.Preview(ctx, plan, execution, bigquery.DefaultBounds())
+// Present the exact preview and its source/policy/identity/cost binding to the operator.
+approval, err := client.Approve(preview, operatorApprovedDigest)
+run, err := client.Execute(ctx, approval) // retain any returned run receipt even on error
+page, err := run.NextPage()             // or Run.Next(), a DALgo RecordsetReader
+resumed, err := client.Resume(ctx, page.Receipt, page.Cursor)
+status, err := client.Status(ctx, *page.Receipt.Job)
+cancel, err := client.CancelJob(ctx, *page.Receipt.Job)
+```
+
+## Explicit destination loads
+
+`NewLoadWriter` is a separate, narrow API for applications that own a BigQuery
+destination. The caller chooses the project, dataset, location, and authenticated
+HTTP client; the package does not discover credentials. The exported
+`BigqueryScope` names the write scope the caller must arrange locally. The
+writer creates a missing dataset only at the requested location, refuses
+existing destination tables, and records a private ownership label, schema and
+ETag for each table it creates. `SetConstraints` and `LoadTable` refuse tables
+that this writer did not create or whose ownership, schema or ETag changed.
+Constraint patches send the tracked ETag as `If-Match`, so a stale metadata
+update is rejected by BigQuery. The load-job API has no destination-table ETag
+precondition: an external principal can replace a table between the writer's
+final ownership check and load dispatch. A load receipt verifies the identified
+job and its destination, but cannot fence that external concurrent-writer race.
+The authenticated transport checks every dispatched API, resumable-upload and
+status request against the fixed HTTPS Google API origins before credentials are
+added, including SDK-generated chunk requests. It submits explicit-schema NDJSON load jobs with
+`CREATE_NEVER`, `WRITE_EMPTY`, zero bad records, and no ignored unknown fields.
+An ambiguous submission returns `*LoadOutcomeUnknownError` with a durable,
+credential-free `LoadJobRef`. Persist that reference and call `RecoverLoad` with
+a fresh context to poll the same job; it never resubmits source rows. Completed
+receipts require the same job's project, ID, location, destination and load
+statistics, so a missing row count is an unknown outcome rather than zero.
+Loads are atomic per table; a caller copying multiple tables must account for
+partial progress across separate jobs. Any primary and foreign keys are
+BigQuery metadata only: BigQuery does not enforce them.
+
+This shows API shape; applications must handle each error before the next call. `Executor` bridges one approved effective plan to DALgo recordsets and rejects keyed records or a changed query. HTTP errors contain only sanitized codes/reasons. The generated SDK runs with a discard logger; validated raw response bodies drive cell/state decoding. Fixed Google origin, redirect refusal, decompressed body limits, duplicate-key/Unicode validation and a lower dispatch gate apply beneath authentication middleware. POST replay is never permitted; GET retries share a three-attempt limit and debit actual response/page counters.
+
+`Run.Close` stops local delivery and preserves the known running job and reservation. A cursor is an opaque, ledger-checked continuation of the original query, job, schema, page, offset, principal generation and cumulative counters. Resume retains the original absolute execution deadline. Expired result work stops before new dispatch or body I/O; explicit status/cancel retain a bounded control opportunity and the same response budget. A cancellation request alone is not confirmed cancellation; an ambiguous `stopped` reason remains a failure. Known jobs stay recoverable after later timeout or malformed rows; lost or late unvalidated initial submissions retain `submission_unknown` and full cap.
+
+`RebindJob(ctx, receipt, cursor)` verifies a newly trusted generation for the original stable kind/subject, current read grant and unchanged policy/source binding. It atomically changes only the private active access principal and rotates cursor authority. Original receipt/approval principal provenance, offsets, page hashes, schema, counters, reservations and deadline remain intact. A stale cursor/generation or concurrent lease loses authority. It issues no BigQuery request, dry run or approval renewal. After execution expiry it only prepares existing bounded status/cancel recovery. This implements the accepted [same-subject reconnection clause](https://github.com/datatug/datatug/blob/a541f8da3d1b2db9ffa5c2e5396efa2afa768066/spec/research/public-data-fabric/evidence/bigquery-dual-runtime/a0/proposal-r1.md#L85); actual browser GIS/CLI identity attestation remains consumer work.
+
+`Client.Snapshot(ctx, priorReceipt)` returns `SnapshotResult{Receipt, Cursor}` from the trusted local ledger under the existing run lease. It validates immutable receipt authority and returns current billing, state and cumulative counters with defensive copies. The opaque cursor remains the exact previously issued delivery binding, or an empty string if none exists; control byte debits are reflected in the receipt without minting a new cursor. Snapshot performs no provider/policy preparation, HTTP, row reads or state changes. It remains available after execution expiry, without granting permission to resume expired results. Preserve each control operation's separate status/cancel result, including partial-error outcomes, alongside this receipt snapshot. Consumers should share the original bounded control context across control and Snapshot. A busy run lease refuses immediately; the local operation observes earlier caller cancellation or a 15-second ceiling and retains the documented filesystem limitations. There is no new HTTP route.
+
+## Metadata inspection
+
+`Client.ObserveConfigured(ctx, plan.SourceDigest, bounds)` selects only a reviewed
+profile frozen in `NewClient` and validates its dataset location, native table
+configuration and schema using authenticated
+[datasets.get](https://docs.cloud.google.com/bigquery/docs/reference/rest/v2/datasets/get)
+and [tables.get](https://docs.cloud.google.com/bigquery/docs/reference/rest/v2/tables/get).
+Google documents `tables.get` as table structure metadata without table data.
+Explicit `Bounds` limit per-response and cumulative bytes, per-HTTP time and total
+wall time. Unknown profiles and invalid bounds fail before dispatch. The method
+does not invoke `Prepare`, perform a dry run, create a job, read rows or access the
+query ledger. It uses the same trusted `Provider` and transport guards as query
+operations; read permission is required, cancellation permission is not.
+The existing `Observe(ctx, profile)` API retains its caller-supplied profile and
+default bounds behavior.
+
+`NewDiscoveryClient(DiscoveryConfig)` provides separate initial metadata
+discovery without an execution profile. It freezes at most 16 protected exact
+source/project/dataset/table locators; `Discover(ctx, sourceID, bounds)` accepts
+only a configured source ID. Its required `DiscoveryAuthorize` bridge reads the
+current owner/consent/source/session binding and private policy revision before
+each dispatch and delivery, including another policy check after provider identity
+callbacks return. The trusted `Provider` attests the matching principal,
+expiry and read capability. Neither a bearer token nor request JSON attests this
+state. A discovery-only physical transport wrapper repeats identity and policy
+attestation inside the admitted transport worker immediately before invoking the
+trusted transport, including consent changes while that worker was queued.
+The client holds no query preparer or ledger and exposes no job/row API.
+
+Discovery explicitly requests `datasets.get?datasetView=METADATA`, excluding the
+default ACL view, then `tables.get?view=STORAGE_STATS`, pinning the existing audited
+metadata view rather than the future-expanding FULL view. Storage statistics may
+arrive transiently but are discarded; no rows or table data are requested. Exact
+references and observed location must agree. The public projection is deliberately
+partial and can describe TABLE, VIEW, EXTERNAL, MATERIALIZED_VIEW or SNAPSHOT
+without making any of them executable. Unsupported flexible identifiers fail
+closed. Source IDs match the registry's segmented lowercase alphanumeric syntax
+and 80-character ceiling. There is no table listing or inferred table selection; WDI still needs an
+independently documented exact candidate table before this API can inspect it.
+
+The output follows `ovdb-bigquery-observation/draft-1`: exact source refs,
+location/object type, UTC observation time at second precision, recursive schema
+(`name`, native `type`, explicit `mode`, nested `fields`), fixed partial-projection
+marker, credential-free provenance and canonical SHA-256. Depth is at most 8,
+schema fields total at most 500 and the complete envelope at most 64 KiB.
+Descriptions, etags, ACL/security/governance objects, default/generated expressions,
+optional type descriptors, counts, actor/consent IDs, credentials, job project and
+raw bodies are excluded recursively. Unknown properties are omitted; the output
+is not a complete native schema or an admission-ready profile. The SHA-256 covers
+canonical JSON of the entire public envelope with only `sha256` omitted, including
+observation time and provenance; it differs from executable Observation digests.
+Consumers must retain inactive/blocked query, cost, rights and retention gates.
+Review and import the public envelope separately; never persist raw responses or
+the private operator binding.
+
+The [offline CLI harness](examples/metadata-discovery/README.md) demonstrates the
+production discovery path with hostile nested metadata fixtures. Its default live
+mode requires an injected operator factory and refuses when unconfigured. No WDI
+profile, source admission or real metadata access proof is included.
+
+Metadata observation grants no query authority. Execution still requires an
+explicit job project, verified execution principal, current policy preparation,
+dry-run estimate, positive byte cap/session budget and exact approval. Source
+rights and provider-result retention authorization remain separate operator gates:
+[BigQuery materializes query results](https://docs.cloud.google.com/bigquery/docs/cached-results)
+in destination or temporary tables, and disabling cache retrieval does not prevent
+that storage. Go metadata tests do not establish browser OAuth or CORS readiness.
+
+## Local server harness
+
+`examples/server.NewHandler(Config)` provides `/preview`, `/execute`, `/page`, `/rebind`, `/status` and `/cancel` with the injected operator client, fixed query/cost principal and explicit trusted browser origin. Closed bounded JSON requests cannot choose credentials, SQL or cost identity. The server rejects non-loopback clients and unknown origins. The runnable [operator composition scaffold](examples/operator-server/README.md) constructs the client, private ledger, handler and signal-owned server from a build-time injected trusted operator factory. Unconfigured invocation refuses before ledger creation or a listener; the factory must honor its bounded setup context. An operator application can also call `server.Serve(ctx, "127.0.0.1:YOUR_PORT", handler)` after establishing its trusted provider and private ledger; the context owns shutdown. No import or test starts a listener. The production handler tests use `httptest.NewRecorder` and an injected SDK transport for metadata → dry run → approved execution → two same-job pages → status.
+
+## Shared corpus and validation
+
+`testdata/contract/manifest.json` binds corpus revision3 by SHA256 and records its immutable revision2 predecessor. All original 70 cases are byte-identical. Additions exercise named hash mutations and raw HTTP/job state, headers, bodies, dispatch counts, persistent-clock controls and reconnect. JavaScript must vendor exact accepted committed bytes, bind the source commit/manifest hash, and report every scenario through its production path. Private provisional comparisons do not establish final dual-runtime acceptance.
+
+One rejected decompressed overflow scenario records `expected_runtime_observations.go.bytes` and `.js.bytes`: Go exposes a bounded prefix plus one overflow byte, while fetch exposes an entire chunk. Counters truthfully debit exposed bytes. The case explicitly names this streaming variance; error/state/cap/job identity/dispatch behavior and all other fields remain identical. A separate one-byte chunk schedule proves identical counters. This narrow interpretation was reviewed for the released Go component; JavaScript review and joint parity acceptance remain required. Counters are never omitted or clamped to manufacture parity.
+
+Raw `body`, `input` and `body_hex` values must reach the production parser without lossy JSON conversion. HTTP `advance_ms` moves the injected clock before response headers arrive; `gzip` compresses the literal body for the harness. Cases distinguish SQL NULL, JSON text null, empty strings, omitted `v`, malformed UTF-8/surrogates and scalar numeric wire strings. FLOAT64 uses the exact shared entire-string decimal/exponent grammar; no Go literal syntax or JS coercion widens it. RFC8785 hashes accept only the frozen named projections and safe integer numeric JSON tokens, preserving UTF-16 key ordering and exact strings. Warehouse numerics remain strings.
+
+Run `go test -race ./...`, `go vet ./...` and `gofmt` validation. CI runs those checks on Linux, macOS and Windows; local cross-compiles also cover current CLI release targets. `BIGQUERY_CONTRACT_REPORT=/absolute/private/report.json go test -run TestSharedCorpus -count=1 .` emits production HTTP observations for private parity review, excluding only random run IDs/ledger references.
+
+The Go component of Task2 is independently reviewed and released through driver v0.1.1. Shared-corpus acceptance across both runtimes, Task3 browser parity, Task4 actual CLI/app wiring and diagnostics, Task5 reviewed source-access profile, and Task6 both live journeys/rights/admission/cost gates remain open. No actual cloud query/spend, source admission, consumer cutover or dual-runtime live success is claimed. Root owns further landing and release after independent review and exact-head checks.

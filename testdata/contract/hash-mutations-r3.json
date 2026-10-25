@@ -1,0 +1,186 @@
+[
+  {
+    "id": "m1-read-plan-top-digest-original",
+    "kind": "hash",
+    "payload": "ReadPlan",
+    "input": "{\"version\":1,\"sourceDigest\":\"bfd8790437cdb2194fa65ffa693665c1f754ee05c1a9961d7a58f3b96ca3d1aa\",\"projection\":[\"n\"],\"where\":null,\"order\":[],\"limit\":100,\"parameters\":[],\"sql\":\"SELECT `n` FROM `source-project.ds.tbl` LIMIT 100\",\"digest\":\"d93254774a084fc0689efddb48b0ef888722dce765de77aa02a2b12b01154454\"}",
+    "canonical": "{\"limit\":100,\"order\":[],\"parameters\":[],\"projection\":[\"n\"],\"sourceDigest\":\"bfd8790437cdb2194fa65ffa693665c1f754ee05c1a9961d7a58f3b96ca3d1aa\",\"sql\":\"SELECT `n` FROM `source-project.ds.tbl` LIMIT 100\",\"version\":1,\"where\":null}",
+    "digest": "d93254774a084fc0689efddb48b0ef888722dce765de77aa02a2b12b01154454"
+  },
+  {
+    "id": "m1-read-plan-top-digest-excluded",
+    "kind": "hash",
+    "payload": "ReadPlan",
+    "input": "{\"version\":1,\"sourceDigest\":\"bfd8790437cdb2194fa65ffa693665c1f754ee05c1a9961d7a58f3b96ca3d1aa\",\"projection\":[\"n\"],\"where\":null,\"order\":[],\"limit\":100,\"parameters\":[],\"sql\":\"SELECT `n` FROM `source-project.ds.tbl` LIMIT 100\",\"digest\":\"ignored-top\"}",
+    "canonical": "{\"limit\":100,\"order\":[],\"parameters\":[],\"projection\":[\"n\"],\"sourceDigest\":\"bfd8790437cdb2194fa65ffa693665c1f754ee05c1a9961d7a58f3b96ca3d1aa\",\"sql\":\"SELECT `n` FROM `source-project.ds.tbl` LIMIT 100\",\"version\":1,\"where\":null}",
+    "digest": "d93254774a084fc0689efddb48b0ef888722dce765de77aa02a2b12b01154454"
+  },
+  {
+    "id": "m1-observation-before-time-change",
+    "kind": "hash",
+    "payload": "Observation",
+    "input": "{\"table\":{\"projectId\":\"source-project\",\"datasetId\":\"ds\",\"tableId\":\"tbl\"},\"location\":\"EU\",\"type\":\"TABLE\",\"config\":{},\"schema\":[{\"name\":\"n\",\"type\":\"INTEGER\",\"mode\":\"NULLABLE\"}],\"observedAt\":\"2026-10-05T12:00:00Z\",\"etag\":\"one\",\"lastModified\":\"1\"}",
+    "canonical": "{\"config\":{},\"location\":\"EU\",\"schema\":[{\"mode\":\"NULLABLE\",\"name\":\"n\",\"type\":\"INTEGER\"}],\"table\":{\"datasetId\":\"ds\",\"projectId\":\"source-project\",\"tableId\":\"tbl\"},\"type\":\"TABLE\"}",
+    "digest": "8dfec70f51e988ba399d023b98e04dbc83a656da42d5ed90f30dfa7a2783988f"
+  },
+  {
+    "id": "m1-observation-volatile-unbound",
+    "kind": "hash",
+    "payload": "Observation",
+    "input": "{\"table\":{\"projectId\":\"source-project\",\"datasetId\":\"ds\",\"tableId\":\"tbl\"},\"location\":\"EU\",\"type\":\"TABLE\",\"config\":{},\"schema\":[{\"name\":\"n\",\"type\":\"INTEGER\",\"mode\":\"NULLABLE\"}],\"observedAt\":\"later\",\"etag\":\"two\",\"lastModified\":\"2\"}",
+    "canonical": "{\"config\":{},\"location\":\"EU\",\"schema\":[{\"mode\":\"NULLABLE\",\"name\":\"n\",\"type\":\"INTEGER\"}],\"table\":{\"datasetId\":\"ds\",\"projectId\":\"source-project\",\"tableId\":\"tbl\"},\"type\":\"TABLE\"}",
+    "digest": "8dfec70f51e988ba399d023b98e04dbc83a656da42d5ed90f30dfa7a2783988f"
+  },
+  {
+    "id": "m1-source-profile-all-fields",
+    "kind": "hash",
+    "payload": "SourceProfile",
+    "input": "{\"version\":1,\"sourceId\":\"fixture\",\"descriptorDigest\":\"descriptor-r1\",\"logicalCollection\":\"sample\",\"sourceProject\":\"source-project\",\"datasetId\":\"ds\",\"tableId\":\"tbl\",\"location\":\"EU\",\"schema\":[{\"name\":\"n\",\"type\":\"INTEGER\",\"mode\":\"NULLABLE\"}],\"publisherReviewRef\":\"review:publisher\",\"rightsReviewRef\":\"review:rights\",\"use\":\"connection-test\"}",
+    "canonical": "{\"datasetId\":\"ds\",\"descriptorDigest\":\"descriptor-r1\",\"location\":\"EU\",\"logicalCollection\":\"sample\",\"publisherReviewRef\":\"review:publisher\",\"rightsReviewRef\":\"review:rights\",\"schema\":[{\"mode\":\"NULLABLE\",\"name\":\"n\",\"type\":\"INTEGER\"}],\"sourceId\":\"fixture\",\"sourceProject\":\"source-project\",\"tableId\":\"tbl\",\"use\":\"connection-test\",\"version\":1}",
+    "digest": "bfd8790437cdb2194fa65ffa693665c1f754ee05c1a9961d7a58f3b96ca3d1aa"
+  },
+  {
+    "id": "m1-source-profile-rights-bound",
+    "kind": "hash",
+    "payload": "SourceProfile",
+    "input": "{\"version\":1,\"sourceId\":\"fixture\",\"descriptorDigest\":\"descriptor-r1\",\"logicalCollection\":\"sample\",\"sourceProject\":\"source-project\",\"datasetId\":\"ds\",\"tableId\":\"tbl\",\"location\":\"EU\",\"schema\":[{\"name\":\"n\",\"type\":\"INTEGER\",\"mode\":\"NULLABLE\"}],\"publisherReviewRef\":\"review:publisher\",\"rightsReviewRef\":\"review:rights-new\",\"use\":\"connection-test\"}",
+    "canonical": "{\"datasetId\":\"ds\",\"descriptorDigest\":\"descriptor-r1\",\"location\":\"EU\",\"logicalCollection\":\"sample\",\"publisherReviewRef\":\"review:publisher\",\"rightsReviewRef\":\"review:rights-new\",\"schema\":[{\"mode\":\"NULLABLE\",\"name\":\"n\",\"type\":\"INTEGER\"}],\"sourceId\":\"fixture\",\"sourceProject\":\"source-project\",\"tableId\":\"tbl\",\"use\":\"connection-test\",\"version\":1}",
+    "digest": "2a3ad1cf488a3bf06784de353b79f449b24a82612e20392e8bcd37f0268460dd"
+  },
+  {
+    "id": "m1-approval-original",
+    "kind": "hash",
+    "payload": "Approval",
+    "input": "{\"effectivePlanDigest\":\"d93254774a084fc0689efddb48b0ef888722dce765de77aa02a2b12b01154454\",\"observationDigest\":\"8dfec70f51e988ba399d023b98e04dbc83a656da42d5ed90f30dfa7a2783988f\",\"policyDigest\":\"policy\",\"principal\":{\"kind\":\"workload\",\"subject\":\"operator:fixture\",\"generation\":\"1\"},\"jobProject\":\"job-project\",\"location\":\"EU\",\"maximumBytesBilled\":\"1000\",\"sessionBudgetBytes\":\"3000\",\"bounds\":{\"pageSize\":2,\"maxRows\":1000,\"maxPages\":100,\"responseBytes\":4194304,\"totalResponseBytes\":33554432,\"wallMs\":120000,\"httpMs\":15000,\"concurrency\":1},\"estimatedBytes\":\"100\",\"createdAt\":\"now\",\"expiresAt\":\"later\",\"nonce\":\"one\",\"digest\":\"ignored\"}",
+    "canonical": "{\"bounds\":{\"concurrency\":1,\"httpMs\":15000,\"maxPages\":100,\"maxRows\":1000,\"pageSize\":2,\"responseBytes\":4194304,\"totalResponseBytes\":33554432,\"wallMs\":120000},\"effectivePlanDigest\":\"d93254774a084fc0689efddb48b0ef888722dce765de77aa02a2b12b01154454\",\"estimatedBytes\":\"100\",\"jobProject\":\"job-project\",\"location\":\"EU\",\"maximumBytesBilled\":\"1000\",\"observationDigest\":\"8dfec70f51e988ba399d023b98e04dbc83a656da42d5ed90f30dfa7a2783988f\",\"policyDigest\":\"policy\",\"principal\":{\"generation\":\"1\",\"kind\":\"workload\",\"subject\":\"operator:fixture\"},\"sessionBudgetBytes\":\"3000\"}",
+    "digest": "c0915ba24746f252fdcb63a492810e2715f1a37c3ea3604104c8afcab76c5360"
+  },
+  {
+    "id": "m1-approval-cap-bound",
+    "kind": "hash",
+    "payload": "Approval",
+    "input": "{\"effectivePlanDigest\":\"d93254774a084fc0689efddb48b0ef888722dce765de77aa02a2b12b01154454\",\"observationDigest\":\"8dfec70f51e988ba399d023b98e04dbc83a656da42d5ed90f30dfa7a2783988f\",\"policyDigest\":\"policy\",\"principal\":{\"kind\":\"workload\",\"subject\":\"operator:fixture\",\"generation\":\"1\"},\"jobProject\":\"job-project\",\"location\":\"EU\",\"maximumBytesBilled\":\"1001\",\"sessionBudgetBytes\":\"3000\",\"bounds\":{\"pageSize\":2,\"maxRows\":1000,\"maxPages\":100,\"responseBytes\":4194304,\"totalResponseBytes\":33554432,\"wallMs\":120000,\"httpMs\":15000,\"concurrency\":1},\"estimatedBytes\":\"100\",\"createdAt\":\"now\",\"expiresAt\":\"later\",\"nonce\":\"one\",\"digest\":\"ignored\"}",
+    "canonical": "{\"bounds\":{\"concurrency\":1,\"httpMs\":15000,\"maxPages\":100,\"maxRows\":1000,\"pageSize\":2,\"responseBytes\":4194304,\"totalResponseBytes\":33554432,\"wallMs\":120000},\"effectivePlanDigest\":\"d93254774a084fc0689efddb48b0ef888722dce765de77aa02a2b12b01154454\",\"estimatedBytes\":\"100\",\"jobProject\":\"job-project\",\"location\":\"EU\",\"maximumBytesBilled\":\"1001\",\"observationDigest\":\"8dfec70f51e988ba399d023b98e04dbc83a656da42d5ed90f30dfa7a2783988f\",\"policyDigest\":\"policy\",\"principal\":{\"generation\":\"1\",\"kind\":\"workload\",\"subject\":\"operator:fixture\"},\"sessionBudgetBytes\":\"3000\"}",
+    "digest": "9725dc3e85bde73abbaf31738d01fea487769c48e0e8250e3b2fcc0984d683f8"
+  },
+  {
+    "id": "m1-approval-budget-bound",
+    "kind": "hash",
+    "payload": "Approval",
+    "input": "{\"effectivePlanDigest\":\"d93254774a084fc0689efddb48b0ef888722dce765de77aa02a2b12b01154454\",\"observationDigest\":\"8dfec70f51e988ba399d023b98e04dbc83a656da42d5ed90f30dfa7a2783988f\",\"policyDigest\":\"policy\",\"principal\":{\"kind\":\"workload\",\"subject\":\"operator:fixture\",\"generation\":\"1\"},\"jobProject\":\"job-project\",\"location\":\"EU\",\"maximumBytesBilled\":\"1000\",\"sessionBudgetBytes\":\"3001\",\"bounds\":{\"pageSize\":2,\"maxRows\":1000,\"maxPages\":100,\"responseBytes\":4194304,\"totalResponseBytes\":33554432,\"wallMs\":120000,\"httpMs\":15000,\"concurrency\":1},\"estimatedBytes\":\"100\",\"createdAt\":\"now\",\"expiresAt\":\"later\",\"nonce\":\"one\",\"digest\":\"ignored\"}",
+    "canonical": "{\"bounds\":{\"concurrency\":1,\"httpMs\":15000,\"maxPages\":100,\"maxRows\":1000,\"pageSize\":2,\"responseBytes\":4194304,\"totalResponseBytes\":33554432,\"wallMs\":120000},\"effectivePlanDigest\":\"d93254774a084fc0689efddb48b0ef888722dce765de77aa02a2b12b01154454\",\"estimatedBytes\":\"100\",\"jobProject\":\"job-project\",\"location\":\"EU\",\"maximumBytesBilled\":\"1000\",\"observationDigest\":\"8dfec70f51e988ba399d023b98e04dbc83a656da42d5ed90f30dfa7a2783988f\",\"policyDigest\":\"policy\",\"principal\":{\"generation\":\"1\",\"kind\":\"workload\",\"subject\":\"operator:fixture\"},\"sessionBudgetBytes\":\"3001\"}",
+    "digest": "b2735e9ec02cf4b3c57edc4f7b83430bbbb67166813c359adf44ee4d79900d4b"
+  },
+  {
+    "id": "m1-approval-policy-bound",
+    "kind": "hash",
+    "payload": "Approval",
+    "input": "{\"effectivePlanDigest\":\"d93254774a084fc0689efddb48b0ef888722dce765de77aa02a2b12b01154454\",\"observationDigest\":\"8dfec70f51e988ba399d023b98e04dbc83a656da42d5ed90f30dfa7a2783988f\",\"policyDigest\":\"new-policy\",\"principal\":{\"kind\":\"workload\",\"subject\":\"operator:fixture\",\"generation\":\"1\"},\"jobProject\":\"job-project\",\"location\":\"EU\",\"maximumBytesBilled\":\"1000\",\"sessionBudgetBytes\":\"3000\",\"bounds\":{\"pageSize\":2,\"maxRows\":1000,\"maxPages\":100,\"responseBytes\":4194304,\"totalResponseBytes\":33554432,\"wallMs\":120000,\"httpMs\":15000,\"concurrency\":1},\"estimatedBytes\":\"100\",\"createdAt\":\"now\",\"expiresAt\":\"later\",\"nonce\":\"one\",\"digest\":\"ignored\"}",
+    "canonical": "{\"bounds\":{\"concurrency\":1,\"httpMs\":15000,\"maxPages\":100,\"maxRows\":1000,\"pageSize\":2,\"responseBytes\":4194304,\"totalResponseBytes\":33554432,\"wallMs\":120000},\"effectivePlanDigest\":\"d93254774a084fc0689efddb48b0ef888722dce765de77aa02a2b12b01154454\",\"estimatedBytes\":\"100\",\"jobProject\":\"job-project\",\"location\":\"EU\",\"maximumBytesBilled\":\"1000\",\"observationDigest\":\"8dfec70f51e988ba399d023b98e04dbc83a656da42d5ed90f30dfa7a2783988f\",\"policyDigest\":\"new-policy\",\"principal\":{\"generation\":\"1\",\"kind\":\"workload\",\"subject\":\"operator:fixture\"},\"sessionBudgetBytes\":\"3000\"}",
+    "digest": "ba19e63c3754957cd14ad65335bded8eb11a54e8f5e4d77c7455e707a88af480"
+  },
+  {
+    "id": "m1-approval-plan-bound",
+    "kind": "hash",
+    "payload": "Approval",
+    "input": "{\"effectivePlanDigest\":\"parameter-mutated-plan-digest\",\"observationDigest\":\"8dfec70f51e988ba399d023b98e04dbc83a656da42d5ed90f30dfa7a2783988f\",\"policyDigest\":\"policy\",\"principal\":{\"kind\":\"workload\",\"subject\":\"operator:fixture\",\"generation\":\"1\"},\"jobProject\":\"job-project\",\"location\":\"EU\",\"maximumBytesBilled\":\"1000\",\"sessionBudgetBytes\":\"3000\",\"bounds\":{\"pageSize\":2,\"maxRows\":1000,\"maxPages\":100,\"responseBytes\":4194304,\"totalResponseBytes\":33554432,\"wallMs\":120000,\"httpMs\":15000,\"concurrency\":1},\"estimatedBytes\":\"100\",\"createdAt\":\"now\",\"expiresAt\":\"later\",\"nonce\":\"one\",\"digest\":\"ignored\"}",
+    "canonical": "{\"bounds\":{\"concurrency\":1,\"httpMs\":15000,\"maxPages\":100,\"maxRows\":1000,\"pageSize\":2,\"responseBytes\":4194304,\"totalResponseBytes\":33554432,\"wallMs\":120000},\"effectivePlanDigest\":\"parameter-mutated-plan-digest\",\"estimatedBytes\":\"100\",\"jobProject\":\"job-project\",\"location\":\"EU\",\"maximumBytesBilled\":\"1000\",\"observationDigest\":\"8dfec70f51e988ba399d023b98e04dbc83a656da42d5ed90f30dfa7a2783988f\",\"policyDigest\":\"policy\",\"principal\":{\"generation\":\"1\",\"kind\":\"workload\",\"subject\":\"operator:fixture\"},\"sessionBudgetBytes\":\"3000\"}",
+    "digest": "e46e2d97b73d32577f6579732824b151bd2a52fe2e6c499f7a30d7b45892e2a1"
+  },
+  {
+    "id": "m1-approval-observation-bound",
+    "kind": "hash",
+    "payload": "Approval",
+    "input": "{\"effectivePlanDigest\":\"d93254774a084fc0689efddb48b0ef888722dce765de77aa02a2b12b01154454\",\"observationDigest\":\"changed-config-digest\",\"policyDigest\":\"policy\",\"principal\":{\"kind\":\"workload\",\"subject\":\"operator:fixture\",\"generation\":\"1\"},\"jobProject\":\"job-project\",\"location\":\"EU\",\"maximumBytesBilled\":\"1000\",\"sessionBudgetBytes\":\"3000\",\"bounds\":{\"pageSize\":2,\"maxRows\":1000,\"maxPages\":100,\"responseBytes\":4194304,\"totalResponseBytes\":33554432,\"wallMs\":120000,\"httpMs\":15000,\"concurrency\":1},\"estimatedBytes\":\"100\",\"createdAt\":\"now\",\"expiresAt\":\"later\",\"nonce\":\"one\",\"digest\":\"ignored\"}",
+    "canonical": "{\"bounds\":{\"concurrency\":1,\"httpMs\":15000,\"maxPages\":100,\"maxRows\":1000,\"pageSize\":2,\"responseBytes\":4194304,\"totalResponseBytes\":33554432,\"wallMs\":120000},\"effectivePlanDigest\":\"d93254774a084fc0689efddb48b0ef888722dce765de77aa02a2b12b01154454\",\"estimatedBytes\":\"100\",\"jobProject\":\"job-project\",\"location\":\"EU\",\"maximumBytesBilled\":\"1000\",\"observationDigest\":\"changed-config-digest\",\"policyDigest\":\"policy\",\"principal\":{\"generation\":\"1\",\"kind\":\"workload\",\"subject\":\"operator:fixture\"},\"sessionBudgetBytes\":\"3000\"}",
+    "digest": "24688442f71a7e78ca309a5021b439f1e992c4fdc40eb09a0b08dfed93ad5108"
+  },
+  {
+    "id": "m1-approval-generation-bound",
+    "kind": "hash",
+    "payload": "Approval",
+    "input": "{\"effectivePlanDigest\":\"d93254774a084fc0689efddb48b0ef888722dce765de77aa02a2b12b01154454\",\"observationDigest\":\"8dfec70f51e988ba399d023b98e04dbc83a656da42d5ed90f30dfa7a2783988f\",\"policyDigest\":\"policy\",\"principal\":{\"kind\":\"workload\",\"subject\":\"operator:fixture\",\"generation\":\"2\"},\"jobProject\":\"job-project\",\"location\":\"EU\",\"maximumBytesBilled\":\"1000\",\"sessionBudgetBytes\":\"3000\",\"bounds\":{\"pageSize\":2,\"maxRows\":1000,\"maxPages\":100,\"responseBytes\":4194304,\"totalResponseBytes\":33554432,\"wallMs\":120000,\"httpMs\":15000,\"concurrency\":1},\"estimatedBytes\":\"100\",\"createdAt\":\"now\",\"expiresAt\":\"later\",\"nonce\":\"one\",\"digest\":\"ignored\"}",
+    "canonical": "{\"bounds\":{\"concurrency\":1,\"httpMs\":15000,\"maxPages\":100,\"maxRows\":1000,\"pageSize\":2,\"responseBytes\":4194304,\"totalResponseBytes\":33554432,\"wallMs\":120000},\"effectivePlanDigest\":\"d93254774a084fc0689efddb48b0ef888722dce765de77aa02a2b12b01154454\",\"estimatedBytes\":\"100\",\"jobProject\":\"job-project\",\"location\":\"EU\",\"maximumBytesBilled\":\"1000\",\"observationDigest\":\"8dfec70f51e988ba399d023b98e04dbc83a656da42d5ed90f30dfa7a2783988f\",\"policyDigest\":\"policy\",\"principal\":{\"generation\":\"2\",\"kind\":\"workload\",\"subject\":\"operator:fixture\"},\"sessionBudgetBytes\":\"3000\"}",
+    "digest": "0afc4c82a6b8777fd9dce885c9c05c9dd797211019465ff1ba882d9e5eba12c8"
+  },
+  {
+    "id": "m1-approval-times-nonce-digest-excluded",
+    "kind": "hash",
+    "payload": "Approval",
+    "input": "{\"effectivePlanDigest\":\"d93254774a084fc0689efddb48b0ef888722dce765de77aa02a2b12b01154454\",\"observationDigest\":\"8dfec70f51e988ba399d023b98e04dbc83a656da42d5ed90f30dfa7a2783988f\",\"policyDigest\":\"policy\",\"principal\":{\"kind\":\"workload\",\"subject\":\"operator:fixture\",\"generation\":\"1\"},\"jobProject\":\"job-project\",\"location\":\"EU\",\"maximumBytesBilled\":\"1000\",\"sessionBudgetBytes\":\"3000\",\"bounds\":{\"pageSize\":2,\"maxRows\":1000,\"maxPages\":100,\"responseBytes\":4194304,\"totalResponseBytes\":33554432,\"wallMs\":120000,\"httpMs\":15000,\"concurrency\":1},\"estimatedBytes\":\"100\",\"createdAt\":\"changed\",\"expiresAt\":\"different\",\"nonce\":\"two\",\"digest\":\"different-top\"}",
+    "canonical": "{\"bounds\":{\"concurrency\":1,\"httpMs\":15000,\"maxPages\":100,\"maxRows\":1000,\"pageSize\":2,\"responseBytes\":4194304,\"totalResponseBytes\":33554432,\"wallMs\":120000},\"effectivePlanDigest\":\"d93254774a084fc0689efddb48b0ef888722dce765de77aa02a2b12b01154454\",\"estimatedBytes\":\"100\",\"jobProject\":\"job-project\",\"location\":\"EU\",\"maximumBytesBilled\":\"1000\",\"observationDigest\":\"8dfec70f51e988ba399d023b98e04dbc83a656da42d5ed90f30dfa7a2783988f\",\"policyDigest\":\"policy\",\"principal\":{\"generation\":\"1\",\"kind\":\"workload\",\"subject\":\"operator:fixture\"},\"sessionBudgetBytes\":\"3000\"}",
+    "digest": "c0915ba24746f252fdcb63a492810e2715f1a37c3ea3604104c8afcab76c5360"
+  },
+  {
+    "id": "m1-float64-param-digest-0",
+    "kind": "hash",
+    "payload": "ReadPlan",
+    "input": "{\"version\":1,\"sourceDigest\":\"ed0e015d5a08ff2a5d50906d7d4b506b7e47c730e1a9dddfcf313bb6318a5039\",\"projection\":[\"n\"],\"where\":{\"op\":\"=\",\"column\":\"n\",\"parameter\":\"p0\"},\"order\":[],\"limit\":100,\"parameters\":[{\"name\":\"p0\",\"type\":\"FLOAT64\",\"value\":\"0\"}],\"sql\":\"SELECT `n` FROM `source-project.ds.tbl` WHERE `n` = @p0 LIMIT 100\",\"digest\":\"d93254774a084fc0689efddb48b0ef888722dce765de77aa02a2b12b01154454\"}",
+    "canonical": "{\"limit\":100,\"order\":[],\"parameters\":[{\"name\":\"p0\",\"type\":\"FLOAT64\",\"value\":\"0\"}],\"projection\":[\"n\"],\"sourceDigest\":\"ed0e015d5a08ff2a5d50906d7d4b506b7e47c730e1a9dddfcf313bb6318a5039\",\"sql\":\"SELECT `n` FROM `source-project.ds.tbl` WHERE `n` = @p0 LIMIT 100\",\"version\":1,\"where\":{\"column\":\"n\",\"op\":\"=\",\"parameter\":\"p0\"}}",
+    "digest": "cd2c81396bbe769e4a2fbcc2de130b847e0be60832835adc5bf4796d7fdf2f7e"
+  },
+  {
+    "id": "m1-float64-param-digest-1",
+    "kind": "hash",
+    "payload": "ReadPlan",
+    "input": "{\"version\":1,\"sourceDigest\":\"ed0e015d5a08ff2a5d50906d7d4b506b7e47c730e1a9dddfcf313bb6318a5039\",\"projection\":[\"n\"],\"where\":{\"op\":\"=\",\"column\":\"n\",\"parameter\":\"p0\"},\"order\":[],\"limit\":100,\"parameters\":[{\"name\":\"p0\",\"type\":\"FLOAT64\",\"value\":\"1e-7\"}],\"sql\":\"SELECT `n` FROM `source-project.ds.tbl` WHERE `n` = @p0 LIMIT 100\",\"digest\":\"d93254774a084fc0689efddb48b0ef888722dce765de77aa02a2b12b01154454\"}",
+    "canonical": "{\"limit\":100,\"order\":[],\"parameters\":[{\"name\":\"p0\",\"type\":\"FLOAT64\",\"value\":\"1e-7\"}],\"projection\":[\"n\"],\"sourceDigest\":\"ed0e015d5a08ff2a5d50906d7d4b506b7e47c730e1a9dddfcf313bb6318a5039\",\"sql\":\"SELECT `n` FROM `source-project.ds.tbl` WHERE `n` = @p0 LIMIT 100\",\"version\":1,\"where\":{\"column\":\"n\",\"op\":\"=\",\"parameter\":\"p0\"}}",
+    "digest": "3e4172aebb9824d3aed7ade5329991cc4bf721d85f911d23258f6ce5d8506915"
+  },
+  {
+    "id": "m1-float64-param-digest-2",
+    "kind": "hash",
+    "payload": "ReadPlan",
+    "input": "{\"version\":1,\"sourceDigest\":\"ed0e015d5a08ff2a5d50906d7d4b506b7e47c730e1a9dddfcf313bb6318a5039\",\"projection\":[\"n\"],\"where\":{\"op\":\"=\",\"column\":\"n\",\"parameter\":\"p0\"},\"order\":[],\"limit\":100,\"parameters\":[{\"name\":\"p0\",\"type\":\"FLOAT64\",\"value\":\"0.000001\"}],\"sql\":\"SELECT `n` FROM `source-project.ds.tbl` WHERE `n` = @p0 LIMIT 100\",\"digest\":\"d93254774a084fc0689efddb48b0ef888722dce765de77aa02a2b12b01154454\"}",
+    "canonical": "{\"limit\":100,\"order\":[],\"parameters\":[{\"name\":\"p0\",\"type\":\"FLOAT64\",\"value\":\"0.000001\"}],\"projection\":[\"n\"],\"sourceDigest\":\"ed0e015d5a08ff2a5d50906d7d4b506b7e47c730e1a9dddfcf313bb6318a5039\",\"sql\":\"SELECT `n` FROM `source-project.ds.tbl` WHERE `n` = @p0 LIMIT 100\",\"version\":1,\"where\":{\"column\":\"n\",\"op\":\"=\",\"parameter\":\"p0\"}}",
+    "digest": "57e899fc69514fa7f4f5e8e43f27b2e714f40cb79ae6edfa35fe71eca883f569"
+  },
+  {
+    "id": "m1-float64-param-digest-3",
+    "kind": "hash",
+    "payload": "ReadPlan",
+    "input": "{\"version\":1,\"sourceDigest\":\"ed0e015d5a08ff2a5d50906d7d4b506b7e47c730e1a9dddfcf313bb6318a5039\",\"projection\":[\"n\"],\"where\":{\"op\":\"=\",\"column\":\"n\",\"parameter\":\"p0\"},\"order\":[],\"limit\":100,\"parameters\":[{\"name\":\"p0\",\"type\":\"FLOAT64\",\"value\":\"100000000000000000000\"}],\"sql\":\"SELECT `n` FROM `source-project.ds.tbl` WHERE `n` = @p0 LIMIT 100\",\"digest\":\"d93254774a084fc0689efddb48b0ef888722dce765de77aa02a2b12b01154454\"}",
+    "canonical": "{\"limit\":100,\"order\":[],\"parameters\":[{\"name\":\"p0\",\"type\":\"FLOAT64\",\"value\":\"100000000000000000000\"}],\"projection\":[\"n\"],\"sourceDigest\":\"ed0e015d5a08ff2a5d50906d7d4b506b7e47c730e1a9dddfcf313bb6318a5039\",\"sql\":\"SELECT `n` FROM `source-project.ds.tbl` WHERE `n` = @p0 LIMIT 100\",\"version\":1,\"where\":{\"column\":\"n\",\"op\":\"=\",\"parameter\":\"p0\"}}",
+    "digest": "55b77c8411e2b6e7906572fb640aff3b0501a1f30eb65870ed1e8efd2e9fe865"
+  },
+  {
+    "id": "m1-float64-param-digest-4",
+    "kind": "hash",
+    "payload": "ReadPlan",
+    "input": "{\"version\":1,\"sourceDigest\":\"ed0e015d5a08ff2a5d50906d7d4b506b7e47c730e1a9dddfcf313bb6318a5039\",\"projection\":[\"n\"],\"where\":{\"op\":\"=\",\"column\":\"n\",\"parameter\":\"p0\"},\"order\":[],\"limit\":100,\"parameters\":[{\"name\":\"p0\",\"type\":\"FLOAT64\",\"value\":\"1e+21\"}],\"sql\":\"SELECT `n` FROM `source-project.ds.tbl` WHERE `n` = @p0 LIMIT 100\",\"digest\":\"d93254774a084fc0689efddb48b0ef888722dce765de77aa02a2b12b01154454\"}",
+    "canonical": "{\"limit\":100,\"order\":[],\"parameters\":[{\"name\":\"p0\",\"type\":\"FLOAT64\",\"value\":\"1e+21\"}],\"projection\":[\"n\"],\"sourceDigest\":\"ed0e015d5a08ff2a5d50906d7d4b506b7e47c730e1a9dddfcf313bb6318a5039\",\"sql\":\"SELECT `n` FROM `source-project.ds.tbl` WHERE `n` = @p0 LIMIT 100\",\"version\":1,\"where\":{\"column\":\"n\",\"op\":\"=\",\"parameter\":\"p0\"}}",
+    "digest": "ed1ae258c10732e4c8efba2540e1a93b643423a714ac580dfe27bb42c80926ad"
+  },
+  {
+    "id": "m1-int64-param-plan-1",
+    "kind": "hash",
+    "payload": "ReadPlan",
+    "input": "{\"version\":1,\"sourceDigest\":\"bfd8790437cdb2194fa65ffa693665c1f754ee05c1a9961d7a58f3b96ca3d1aa\",\"projection\":[\"n\"],\"where\":{\"op\":\"=\",\"column\":\"n\",\"parameter\":\"p0\"},\"order\":[],\"limit\":100,\"parameters\":[{\"name\":\"p0\",\"type\":\"INT64\",\"value\":\"1\"}],\"sql\":\"SELECT `n` FROM `source-project.ds.tbl` WHERE `n` = @p0 LIMIT 100\",\"digest\":\"4bb00efc36d5d7ec7da248c6d11b994d864cad270f1d9320959c9032a8b6590d\"}",
+    "canonical": "{\"limit\":100,\"order\":[],\"parameters\":[{\"name\":\"p0\",\"type\":\"INT64\",\"value\":\"1\"}],\"projection\":[\"n\"],\"sourceDigest\":\"bfd8790437cdb2194fa65ffa693665c1f754ee05c1a9961d7a58f3b96ca3d1aa\",\"sql\":\"SELECT `n` FROM `source-project.ds.tbl` WHERE `n` = @p0 LIMIT 100\",\"version\":1,\"where\":{\"column\":\"n\",\"op\":\"=\",\"parameter\":\"p0\"}}",
+    "digest": "4bb00efc36d5d7ec7da248c6d11b994d864cad270f1d9320959c9032a8b6590d"
+  },
+  {
+    "id": "m1-int64-param-approval-1",
+    "kind": "hash",
+    "payload": "Approval",
+    "input": "{\"effectivePlanDigest\":\"4bb00efc36d5d7ec7da248c6d11b994d864cad270f1d9320959c9032a8b6590d\",\"observationDigest\":\"8dfec70f51e988ba399d023b98e04dbc83a656da42d5ed90f30dfa7a2783988f\",\"policyDigest\":\"policy\",\"principal\":{\"kind\":\"workload\",\"subject\":\"operator:fixture\",\"generation\":\"1\"},\"jobProject\":\"job-project\",\"location\":\"EU\",\"maximumBytesBilled\":\"1000\",\"sessionBudgetBytes\":\"3000\",\"bounds\":{\"pageSize\":2,\"maxRows\":1000,\"maxPages\":100,\"responseBytes\":4194304,\"totalResponseBytes\":33554432,\"wallMs\":120000,\"httpMs\":15000,\"concurrency\":1},\"estimatedBytes\":\"100\",\"createdAt\":\"now\",\"expiresAt\":\"later\",\"nonce\":\"one\",\"digest\":\"ignored\"}",
+    "canonical": "{\"bounds\":{\"concurrency\":1,\"httpMs\":15000,\"maxPages\":100,\"maxRows\":1000,\"pageSize\":2,\"responseBytes\":4194304,\"totalResponseBytes\":33554432,\"wallMs\":120000},\"effectivePlanDigest\":\"4bb00efc36d5d7ec7da248c6d11b994d864cad270f1d9320959c9032a8b6590d\",\"estimatedBytes\":\"100\",\"jobProject\":\"job-project\",\"location\":\"EU\",\"maximumBytesBilled\":\"1000\",\"observationDigest\":\"8dfec70f51e988ba399d023b98e04dbc83a656da42d5ed90f30dfa7a2783988f\",\"policyDigest\":\"policy\",\"principal\":{\"generation\":\"1\",\"kind\":\"workload\",\"subject\":\"operator:fixture\"},\"sessionBudgetBytes\":\"3000\"}",
+    "digest": "59a3f79d0ab6199576d8e1bdd600e9a5d4caf42ae303160b7fb59b6ab95f0ddb"
+  },
+  {
+    "id": "m1-int64-param-plan-2",
+    "kind": "hash",
+    "payload": "ReadPlan",
+    "input": "{\"version\":1,\"sourceDigest\":\"bfd8790437cdb2194fa65ffa693665c1f754ee05c1a9961d7a58f3b96ca3d1aa\",\"projection\":[\"n\"],\"where\":{\"op\":\"=\",\"column\":\"n\",\"parameter\":\"p0\"},\"order\":[],\"limit\":100,\"parameters\":[{\"name\":\"p0\",\"type\":\"INT64\",\"value\":\"2\"}],\"sql\":\"SELECT `n` FROM `source-project.ds.tbl` WHERE `n` = @p0 LIMIT 100\",\"digest\":\"fec6f92416ea303fd09c5775132571120d32dc6c7ff529aa32303815e45f205d\"}",
+    "canonical": "{\"limit\":100,\"order\":[],\"parameters\":[{\"name\":\"p0\",\"type\":\"INT64\",\"value\":\"2\"}],\"projection\":[\"n\"],\"sourceDigest\":\"bfd8790437cdb2194fa65ffa693665c1f754ee05c1a9961d7a58f3b96ca3d1aa\",\"sql\":\"SELECT `n` FROM `source-project.ds.tbl` WHERE `n` = @p0 LIMIT 100\",\"version\":1,\"where\":{\"column\":\"n\",\"op\":\"=\",\"parameter\":\"p0\"}}",
+    "digest": "fec6f92416ea303fd09c5775132571120d32dc6c7ff529aa32303815e45f205d"
+  },
+  {
+    "id": "m1-int64-param-approval-2",
+    "kind": "hash",
+    "payload": "Approval",
+    "input": "{\"effectivePlanDigest\":\"fec6f92416ea303fd09c5775132571120d32dc6c7ff529aa32303815e45f205d\",\"observationDigest\":\"8dfec70f51e988ba399d023b98e04dbc83a656da42d5ed90f30dfa7a2783988f\",\"policyDigest\":\"policy\",\"principal\":{\"kind\":\"workload\",\"subject\":\"operator:fixture\",\"generation\":\"1\"},\"jobProject\":\"job-project\",\"location\":\"EU\",\"maximumBytesBilled\":\"1000\",\"sessionBudgetBytes\":\"3000\",\"bounds\":{\"pageSize\":2,\"maxRows\":1000,\"maxPages\":100,\"responseBytes\":4194304,\"totalResponseBytes\":33554432,\"wallMs\":120000,\"httpMs\":15000,\"concurrency\":1},\"estimatedBytes\":\"100\",\"createdAt\":\"now\",\"expiresAt\":\"later\",\"nonce\":\"one\",\"digest\":\"ignored\"}",
+    "canonical": "{\"bounds\":{\"concurrency\":1,\"httpMs\":15000,\"maxPages\":100,\"maxRows\":1000,\"pageSize\":2,\"responseBytes\":4194304,\"totalResponseBytes\":33554432,\"wallMs\":120000},\"effectivePlanDigest\":\"fec6f92416ea303fd09c5775132571120d32dc6c7ff529aa32303815e45f205d\",\"estimatedBytes\":\"100\",\"jobProject\":\"job-project\",\"location\":\"EU\",\"maximumBytesBilled\":\"1000\",\"observationDigest\":\"8dfec70f51e988ba399d023b98e04dbc83a656da42d5ed90f30dfa7a2783988f\",\"policyDigest\":\"policy\",\"principal\":{\"generation\":\"1\",\"kind\":\"workload\",\"subject\":\"operator:fixture\"},\"sessionBudgetBytes\":\"3000\"}",
+    "digest": "5bc0bc2fb32b97ba7c19894d61a97ef6ea104c8e8cf0b50e8681cdc9f4acc13a"
+  }
+]

@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "kind": "synthetic-timestamp-rest-parameters",
+  "source": "https://docs.cloud.google.com/bigquery/docs/parameterized-queries#use_timestamps_in_parameterized_queries",
+  "cases": [
+    { "epochMicroseconds": "0", "wireUTC": "1970-01-01 00:00:00.000000 UTC" },
+    { "epochMicroseconds": "1", "wireUTC": "1970-01-01 00:00:00.000001 UTC" },
+    { "epochMicroseconds": "-1", "wireUTC": "1969-12-31 23:59:59.999999 UTC" },
+    { "epochMicroseconds": "999999", "wireUTC": "1970-01-01 00:00:00.999999 UTC" },
+    { "epochMicroseconds": "1000000", "wireUTC": "1970-01-01 00:00:01.000000 UTC" },
+    { "epochMicroseconds": "-999999", "wireUTC": "1969-12-31 23:59:59.000001 UTC" },
+    { "epochMicroseconds": "-1000000", "wireUTC": "1969-12-31 23:59:59.000000 UTC" },
+    { "epochMicroseconds": "-1000001", "wireUTC": "1969-12-31 23:59:58.999999 UTC" },
+    { "epochMicroseconds": "-62135596800000000", "wireUTC": "0001-01-01 00:00:00.000000 UTC" },
+    { "epochMicroseconds": "253402300799999999", "wireUTC": "9999-12-31 23:59:59.999999 UTC" },
+    { "epochMicroseconds": "951782400123456", "wireUTC": "2000-02-29 00:00:00.123456 UTC" },
+    { "epochMicroseconds": "4107542399999999", "wireUTC": "2100-02-28 23:59:59.999999 UTC" },
+    { "epochMicroseconds": "4107542400000000", "wireUTC": "2100-03-01 00:00:00.000000 UTC" }
+  ]
+}

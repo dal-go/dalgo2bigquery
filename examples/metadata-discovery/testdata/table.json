@@ -1,0 +1,18 @@
+{
+  "tableReference": {"projectId": "fixture-project", "datasetId": "fixture_dataset", "tableId": "sample"},
+  "location": "EU",
+  "type": "TABLE",
+  "etag": "PRIVATE opaque table etag",
+  "numRows": "123456789012345678",
+  "numBytes": "123456789012345678",
+  "view": {"query": "PRIVATE expression must never be copied"},
+  "schema": {
+    "fields": [
+      {"name": "id", "type": "INTEGER", "description": "PRIVATE description", "policyTags": {"names": ["PRIVATE policy resource"]}},
+      {"name": "details", "type": "RECORD", "mode": "NULLABLE", "fields": [
+        {"name": "amount", "type": "NUMERIC", "precision": "10", "scale": "2", "dataPolicies": [{"name": "PRIVATE governance resource"}], "defaultValueExpression": "PRIVATE default"},
+        {"name": "span", "type": "RANGE", "mode": "REPEATED", "rangeElementType": {"type": "DATE"}, "generatedColumn": {"expression": "PRIVATE generated expression"}, "futureDescriptor": {"secret": "PRIVATE future property"}}
+      ]}
+    ]
+  }
+}
