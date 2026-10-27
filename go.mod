@@ -3,7 +3,7 @@ module github.com/dal-go/dalgo2bigquery
 go 1.27.0
 
 require (
-	github.com/dal-go/dalgo v0.95.2
+	github.com/dal-go/dalgo v0.95.3
 	github.com/dal-go/record v0.1.5
 	golang.org/x/sys v0.49.0
 	google.golang.org/api v0.296.0
@@ -13,7 +13,7 @@ require (
 	cloud.google.com/go/auth v0.23.2 // indirect
 	cloud.google.com/go/auth/oauth2adapt v0.2.8 // indirect
 	cloud.google.com/go/compute/metadata v0.9.0 // indirect
-	github.com/RoaringBitmap/roaring/v2 v2.29.0 // indirect
+	github.com/RoaringBitmap/roaring/v2 v2.30.0 // indirect
 	github.com/bits-and-blooms/bitset v1.24.4 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
